@@ -106,8 +106,14 @@ def make_panel(
         query = add_sql_condition(query, marker)
 
     if dashboard_filter:
-        field = "source_ip" if stream == "unclassified" else "device_name"
-        variable = "source" if stream == "unclassified" else "device"
+        # PVE's device_name is indexed for ordinary searches, but current
+        # OpenObserve builds can return partial DataFusion/Tantivy errors for
+        # metric and histogram queries that use the indexed field as a file
+        # filter. source_ip is authoritative for PVE routing and avoids that
+        # failing index path while preserving per-node dashboard selection.
+        source_filter = stream in {"unclassified", "proxmox_ve"}
+        field = "source_ip" if source_filter else "device_name"
+        variable = "source" if source_filter else "device"
         query = add_sql_condition(query, f"{field} IN (${variable})")
 
     # Dashboard schema v5's frontend is most reliable when custom SQL output
@@ -648,14 +654,15 @@ def dashboard(title: str, description: str, tabs: list[dict], *, stream: str | N
     variables: list[dict] = []
     if stream:
         is_unclassified = stream == "unclassified"
+        source_filter = is_unclassified or stream == "proxmox_ve"
         variables.append({
             "type": "query_values",
-            "name": "source" if is_unclassified else "device",
-            "label": "Source IP" if is_unclassified else "Device",
+            "name": "source" if source_filter else "device",
+            "label": "Source IP" if is_unclassified else ("Node IP" if source_filter else "Device"),
             "query_data": {
                 "stream_type": "logs",
                 "stream": stream,
-                "field": "source_ip" if is_unclassified else "device_name",
+                "field": "source_ip" if source_filter else "device_name",
                 "max_record_size": 1000,
             },
             "value": "",

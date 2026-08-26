@@ -59,7 +59,7 @@ def main() -> int:
     validate_dashboard(MODULE.pmg_dashboard(), 30, "7d")
     validate_dashboard(MODULE.fortigate_dashboard(), 70, "24h")
     validate_dashboard(MODULE.juniper_dashboard(), 30, "24h")
-    validate_dashboard(MODULE.proxmox_ve_dashboard(), 32, "24h")
+    validate_dashboard(MODULE.proxmox_ve_dashboard(), 32, "24h", "source")
     validate_dashboard(MODULE.ubersmith_dashboard(), 24, "24h")
     validate_dashboard(MODULE.unclassified_dashboard(), 24, "24h", "source")
     validate_dashboard(MODULE.central_overview_dashboard(), 22, "24h", None)
