@@ -47,7 +47,8 @@ def load_env(path: Path) -> None:
 def axis(label: str, alias: str, column: str, *, color: str | None = None,
          sort: str | None = None, aggregation: str | None = None) -> dict:
     item = {"label": label, "alias": alias, "column": column, "color": color,
-            "functionName": aggregation, "isDerived": False}
+            "type": "custom", "functionName": aggregation, "args": [],
+            "isDerived": False}
     if sort:
         item["sortBy"] = sort
     return item
@@ -75,6 +76,12 @@ def panel_config(panel_type: str, *, unit: str | None = None) -> dict:
         # also avoid OpenObserve v0.92.2's stale-row behavior when a refreshed
         # streaming dashboard query returns fewer table rows.
         "table_filtering": panel_type == "table",
+        # Rendering hundreds of wrapped rows at once can leave OpenObserve's
+        # table body blank even though the query and row count succeeded.
+        # Native client-side pagination keeps every loaded row filterable while
+        # limiting each rendered page to a responsive, readable size.
+        "table_pagination": panel_type == "table",
+        "table_pagination_rows_per_page": 50 if panel_type == "table" else None,
     }
     if unit:
         config["unit"] = unit
@@ -126,7 +133,14 @@ def make_panel(
         source_filter = stream in {"unclassified", "proxmox_ve"}
         field = "source_ip" if source_filter else "device_name"
         variable = "source" if source_filter else "device"
-        query = add_sql_condition(query, f"{field} IN (${variable})")
+        # OpenObserve represents a query-variable's All selection as the
+        # literal _o2_all_. Treat it as no restriction; otherwise the default
+        # dashboard view would query for a device/source with that fake value.
+        # `IN` is valid for both one and many substituted values.
+        query = add_sql_condition(
+            query,
+            f"('_o2_all_' IN (${variable}) OR {field} IN (${variable}))",
+        )
 
     # The dashboard frontend is most reliable when custom SQL output
     # columns use its canonical x_axis_N/y_axis_N names. Keep friendly labels
@@ -154,7 +168,9 @@ def make_panel(
         query = re.sub(rf"(?i)\b(GROUP BY|ORDER BY)\s+{re.escape(old)}\b",
                        lambda match: f"{match.group(1)} {new}", query)
     return {
-        "id": ident,
+        # A new ID prevents an existing browser's panel-result cache from
+        # restoring pre-v8 data or layout against the current definition.
+        "id": f"{ident}_v8_filter",
         "type": panel_type,
         "title": title,
         "description": description,
@@ -189,18 +205,22 @@ def make_panel(
 def build_tab(stream: str, tab_id: str, name: str, specs: list[dict],
               *, dashboard_filter: bool = True) -> dict:
     panels = []
+    # Dashboard schema v8 uses a 192-column grid and 17px rows. The previous
+    # schema used 48 columns and 34px rows, so widths/x positions scale by four
+    # and heights/y positions by two.
+    grid_columns = 192
     row_y = 0
     row_x = 0
     row_h = 0
     for number, spec in enumerate(specs, start=1):
         panel_type = spec[1]
-        width = 12 if panel_type == "metric" else 24
-        height = 8 if panel_type == "metric" else 10
+        width = 48 if panel_type == "metric" else 96
+        height = 16 if panel_type == "metric" else 20
         if panel_type == "h-bar":
-            height = 12
+            height = 24
         if panel_type == "table":
-            width, height = 48, 13
-        if row_x + width > 48:
+            width, height = grid_columns, 26
+        if row_x + width > grid_columns:
             row_y += row_h
             row_x = 0
             row_h = 0

@@ -50,8 +50,14 @@ def validate_dashboard(body: dict, expected_panels: int, period: str,
         axes = fields["x"] + fields["y"]
         assert query["customQuery"] is True
         assert query["query"].strip()
+        assert panel["id"].endswith("_v8_filter") or "_v8_filter_address_filter_" in panel["id"]
+        layout = panel["layout"]
+        assert 0 <= layout["x"] < 192
+        assert layout["x"] + layout["w"] <= 192
+        assert all(item["type"] == "custom" and item["args"] == [] for item in axes)
         if variable:
             assert f"${variable}" in query["query"]
+            assert f"'_o2_all_' IN (${variable})" in query["query"]
         assert axes
         assert len({item["alias"] for item in axes}) == len(axes)
         for item in fields["x"]:
@@ -64,8 +70,15 @@ def validate_dashboard(body: dict, expected_panels: int, period: str,
             assert len(fields["x"]) == 1
             assert fields["y"]
             assert all(item["functionName"] is None for item in fields["y"])
+            assert panel["config"]["table_filtering"] is True
+            assert panel["config"]["table_pagination"] is True
+            assert panel["config"]["table_pagination_rows_per_page"] == 50
+            assert layout["x"] == 0
+            assert layout["w"] == 192
+            assert layout["h"] == 26
         if panel["type"] == "h-bar":
-            assert panel["layout"]["h"] == 12
+            assert layout["w"] == 96
+            assert layout["h"] == 24
 
 
 def validate_visualization_choices(dashboards: list[dict]) -> None:

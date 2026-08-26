@@ -147,6 +147,9 @@ then tick the matching address. The **Role** column says whether each row matche
 the sender or recipient identity. This client-side filter updates immediately
 and does not require the dashboard refresh button; **No matches** is a factual
 zero-result response for the selected time range rather than stale table data.
+Investigation tables use the full dashboard width; use their horizontal scroll
+bar only when a result contains more columns than the browser can display. They
+paginate 50 rows at a time so large result sets remain responsive and filterable.
 
 **Filtering Timeline** shows header parsing, authentication, rule, and
 quarantine/accept activity. **Delivery Timeline** follows Postfix queue IDs
