@@ -19,6 +19,7 @@ DASHBOARD_FOLDERS = {
     "pmg-reporting": ("Messaging", "Mail flow, delivery and filtering reporting."),
     "pmg-investigation": ("Messaging", "Sender, recipient, filtering and queue investigation."),
     "fortigate": ("Network & Security", "Firewall, router and network security reporting."),
+    "fortigate-investigation": ("Network & Security", "FortiGate connection and event investigation."),
     "juniper": ("Network & Security", "Firewall, router and network security reporting."),
     "proxmox-ve": ("Infrastructure", "Virtualization and host operations."),
     "ubersmith": ("Applications", "Application and business-system operations."),
@@ -440,6 +441,76 @@ def fortigate_dashboard() -> dict:
         build_tab("fortigate", "fg_content_security", "Content Security", content_security),
         build_tab("fortigate", "fg_raw", "Raw Events", raw),
     ])
+
+
+def fortigate_investigation_dashboard() -> dict:
+    """Filter-driven FortiGate session, NAT, policy, UTM and raw-event tracing."""
+    s = '"fortigate"'
+    match = " AND ".join([
+        "('$src_ip' = '_o2_all_' OR coalesce(fortigate_srcip,'') = '$src_ip' OR coalesce(fortigate_transip,'') = '$src_ip')",
+        "('$dst_ip' = '_o2_all_' OR coalesce(fortigate_dstip,'') = '$dst_ip' OR coalesce(fortigate_transip,'') = '$dst_ip')",
+        "('$fg_user' = '_o2_all_' OR lower(coalesce(fortigate_user,'')) = lower('$fg_user'))",
+        "('$session_id' = '_o2_all_' OR coalesce(fortigate_sessionid,'') = '$session_id')",
+        "('$policy' = '_o2_all_' OR coalesce(fortigate_policyid,'') = '$policy' OR lower(coalesce(fortigate_policyname,'')) LIKE concat('%', lower('$policy'), '%'))",
+        "('$vdom' = '_o2_all_' OR lower(coalesce(fortigate_vd,'')) = lower('$vdom'))",
+        "('$search_text' = '_o2_all_' OR lower(coalesce(fortigate_app,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_appcat,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_attack,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_hostname,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_url,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_msg,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(message,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(raw_message,'')) LIKE concat('%', lower('$search_text'), '%'))",
+    ])
+    summary = [
+        ("Matching Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE {match}", [], [("Events", "value")]),
+        ("Unique Sessions", "metric", f"SELECT count(DISTINCT fortigate_sessionid) AS value FROM {s} WHERE fortigate_sessionid IS NOT NULL AND {match}", [], [("Sessions", "value")]),
+        ("Denied / Blocked", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(fortigate_action,'')) IN ('deny','blocked','block','dropped','reset','reject') AND {match}", [], [("Events", "value")]),
+        ("Security / UTM Evidence", "metric", f"SELECT count(*) AS value FROM {s} WHERE (fortigate_attack IS NOT NULL OR lower(coalesce(fortigate_type,'')) IN ('utm','security') OR lower(coalesce(fortigate_subtype,'')) IN ('app-ctrl','ips','webfilter','virus','dlp','dns','emailfilter','ssl','file-filter','waf','anomaly')) AND {match}", [], [("Events", "value")]),
+        ("First Matching Event", "metric", f"SELECT min(_timestamp) AS value FROM {s} WHERE {match}", [], [("First Event", "value")]),
+        ("Last Matching Event", "metric", f"SELECT max(_timestamp) AS value FROM {s} WHERE {match}", [], [("Last Event", "value")]),
+    ]
+    results = [
+        ("Matching FortiGate Events", "table", f"SELECT _timestamp AS event_time, device_name, fortigate_vd AS vdom, fortigate_sessionid AS session_id, fortigate_type AS log_type, fortigate_subtype AS subtype, fortigate_level AS severity, fortigate_action AS action, fortigate_srcip AS source_ip, fortigate_srcport AS source_port, fortigate_dstip AS destination_ip, fortigate_dstport AS destination_port, fortigate_user AS user_name, coalesce(fortigate_policyname,fortigate_policyid) AS policy, fortigate_service AS service, fortigate_proto AS protocol, fortigate_app AS application, fortigate_attack AS threat, message FROM {s} WHERE {match} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Device", "device_name"), ("VDOM", "vdom"), ("Session ID", "session_id"), ("Type", "log_type"), ("Subtype", "subtype"), ("Severity", "severity"), ("Action", "action"), ("Source IP", "source_ip"), ("Source Port", "source_port"), ("Destination IP", "destination_ip"), ("Destination Port", "destination_port"), ("User", "user_name"), ("Policy", "policy"), ("Service", "service"), ("Protocol", "protocol"), ("Application", "application"), ("Threat", "threat"), ("Message", "message")], []),
+    ]
+    sessions = [
+        ("Matching Session Summary", "table", f"SELECT max(_timestamp) AS last_event, min(_timestamp) AS first_event, fortigate_sessionid AS session_id, max(fortigate_vd) AS vdom, max(fortigate_srcip) AS source_ip, max(fortigate_srcport) AS source_port, max(fortigate_dstip) AS destination_ip, max(fortigate_dstport) AS destination_port, max(fortigate_transip) AS translated_ip, max(fortigate_transport) AS translated_port, max(fortigate_user) AS user_name, max(coalesce(fortigate_policyname,fortigate_policyid)) AS policy, max(fortigate_service) AS service, max(fortigate_action) AS action, max(fortigate_app) AS application, max(try_cast(fortigate_duration AS BIGINT)) AS duration, max(try_cast(fortigate_sentbyte AS BIGINT)) AS sent_bytes, max(try_cast(fortigate_rcvdbyte AS BIGINT)) AS received_bytes, count(*) AS events FROM {s} WHERE fortigate_sessionid IS NOT NULL AND {match} GROUP BY fortigate_sessionid ORDER BY last_event DESC LIMIT 250", [("Last Event", "last_event"), ("First Event", "first_event"), ("Session ID", "session_id"), ("VDOM", "vdom"), ("Source IP", "source_ip"), ("Source Port", "source_port"), ("Destination IP", "destination_ip"), ("Destination Port", "destination_port"), ("Translated IP", "translated_ip"), ("Translated Port", "translated_port"), ("User", "user_name"), ("Policy", "policy"), ("Service", "service"), ("Action", "action"), ("Application", "application"), ("Duration", "duration"), ("Sent", "sent_bytes"), ("Received", "received_bytes"), ("Events", "events")], []),
+        ("Session Event Timeline", "table", f"SELECT _timestamp AS event_time, fortigate_sessionid AS session_id, fortigate_vd AS vdom, fortigate_action AS action, fortigate_srcip AS source_ip, fortigate_srcport AS source_port, fortigate_dstip AS destination_ip, fortigate_dstport AS destination_port, fortigate_transip AS translated_ip, fortigate_transport AS translated_port, coalesce(fortigate_policyname,fortigate_policyid) AS policy, fortigate_service AS service, fortigate_app AS application, fortigate_sentbyte AS sent_bytes, fortigate_rcvdbyte AS received_bytes, fortigate_duration AS duration, message FROM {s} WHERE fortigate_sessionid IS NOT NULL AND {match} ORDER BY _timestamp ASC LIMIT 1000", [("Time", "event_time"), ("Session ID", "session_id"), ("VDOM", "vdom"), ("Action", "action"), ("Source IP", "source_ip"), ("Source Port", "source_port"), ("Destination IP", "destination_ip"), ("Destination Port", "destination_port"), ("Translated IP", "translated_ip"), ("Translated Port", "translated_port"), ("Policy", "policy"), ("Service", "service"), ("Application", "application"), ("Sent", "sent_bytes"), ("Received", "received_bytes"), ("Duration", "duration"), ("Message", "message")], []),
+        ("NAT Translation Evidence", "table", f"SELECT _timestamp AS event_time, fortigate_sessionid AS session_id, fortigate_vd AS vdom, fortigate_srcip AS original_source, fortigate_srcport AS original_source_port, fortigate_dstip AS original_destination, fortigate_dstport AS original_destination_port, fortigate_transip AS translated_ip, fortigate_transport AS translated_port, fortigate_trandisp AS translation_type, fortigate_action AS action, coalesce(fortigate_policyname,fortigate_policyid) AS policy, message FROM {s} WHERE (fortigate_transip IS NOT NULL OR fortigate_transport IS NOT NULL OR fortigate_trandisp IS NOT NULL) AND {match} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Session ID", "session_id"), ("VDOM", "vdom"), ("Original Source", "original_source"), ("Original Src Port", "original_source_port"), ("Original Destination", "original_destination"), ("Original Dst Port", "original_destination_port"), ("Translated IP", "translated_ip"), ("Translated Port", "translated_port"), ("Translation", "translation_type"), ("Action", "action"), ("Policy", "policy"), ("Message", "message")], []),
+    ]
+    policy_security = [
+        ("Policy Decision Timeline", "table", f"SELECT _timestamp AS event_time, fortigate_sessionid AS session_id, fortigate_vd AS vdom, coalesce(fortigate_policyname,fortigate_policyid) AS policy, fortigate_policytype AS policy_type, fortigate_action AS action, fortigate_srcip AS source_ip, fortigate_dstip AS destination_ip, fortigate_service AS service, fortigate_user AS user_name, fortigate_reason AS reason, fortigate_logdesc AS description, message FROM {s} WHERE (fortigate_policyid IS NOT NULL OR fortigate_policyname IS NOT NULL OR fortigate_action IS NOT NULL) AND {match} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Session ID", "session_id"), ("VDOM", "vdom"), ("Policy", "policy"), ("Policy Type", "policy_type"), ("Action", "action"), ("Source", "source_ip"), ("Destination", "destination_ip"), ("Service", "service"), ("User", "user_name"), ("Reason", "reason"), ("Description", "description"), ("Message", "message")], []),
+        ("UTM / Threat Evidence", "table", f"SELECT _timestamp AS event_time, fortigate_sessionid AS session_id, fortigate_vd AS vdom, fortigate_subtype AS profile_type, fortigate_attackid AS attack_id, fortigate_attack AS signature, fortigate_app AS application, fortigate_appcat AS category, fortigate_apprisk AS risk, coalesce(fortigate_utmaction,fortigate_action) AS action, fortigate_hostname AS hostname, fortigate_url AS url, fortigate_srcip AS source_ip, fortigate_dstip AS destination_ip, coalesce(fortigate_policyname,fortigate_policyid) AS policy, fortigate_incidentserialno AS incident, fortigate_msg AS detail, message, raw_message FROM {s} WHERE (fortigate_attack IS NOT NULL OR fortigate_app IS NOT NULL OR lower(coalesce(fortigate_type,'')) = 'utm' OR lower(coalesce(fortigate_subtype,'')) IN ('app-ctrl','ips','webfilter','virus','dlp','dns','emailfilter','ssl','file-filter','waf','anomaly')) AND {match} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Session ID", "session_id"), ("VDOM", "vdom"), ("Profile", "profile_type"), ("Attack ID", "attack_id"), ("Signature", "signature"), ("Application", "application"), ("Category", "category"), ("Risk", "risk"), ("Action", "action"), ("Hostname", "hostname"), ("URL", "url"), ("Source", "source_ip"), ("Destination", "destination_ip"), ("Policy", "policy"), ("Incident", "incident"), ("Detail", "detail"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    system = [
+        ("Admin, VPN, HA & Routing Evidence", "table", f"SELECT _timestamp AS event_time, device_name, fortigate_vd AS vdom, fortigate_subtype AS subtype, fortigate_eventtype AS event_type, fortigate_level AS severity, fortigate_user AS user_name, fortigate_action AS action, fortigate_status AS status, fortigate_srcip AS source_ip, fortigate_dstip AS destination_ip, fortigate_reason AS reason, fortigate_logdesc AS description, fortigate_msg AS detail, message, raw_message FROM {s} WHERE (fortigate_user IS NOT NULL OR lower(coalesce(fortigate_subtype,'')) LIKE '%vpn%' OR lower(coalesce(fortigate_subtype,'')) LIKE '%admin%' OR lower(coalesce(fortigate_subtype,'')) LIKE '%ha%' OR lower(message) LIKE '%login%' OR lower(message) LIKE '%vpn%' OR lower(message) LIKE '%failover%' OR lower(message) LIKE '%bgp%' OR lower(message) LIKE '%ospf%' OR lower(message) LIKE '%route%') AND {match} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Device", "device_name"), ("VDOM", "vdom"), ("Subtype", "subtype"), ("Event Type", "event_type"), ("Severity", "severity"), ("User", "user_name"), ("Action", "action"), ("Status", "status"), ("Source", "source_ip"), ("Destination", "destination_ip"), ("Reason", "reason"), ("Description", "description"), ("Detail", "detail"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    raw = [
+        ("Raw Matching Events", "table", f"SELECT _timestamp AS event_time, received_at, device_name, source_ip AS collector_source_ip, fortigate_devname AS fortigate_device, fortigate_devid AS serial, fortigate_vd AS vdom, fortigate_sessionid AS session_id, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS program, message, raw_message FROM {s} WHERE {match} ORDER BY _timestamp DESC LIMIT 1000", [("Time", "event_time"), ("Received", "received_at"), ("Mapped Device", "device_name"), ("Sender IP", "collector_source_ip"), ("FortiGate", "fortigate_device"), ("Serial", "serial"), ("VDOM", "vdom"), ("Session ID", "session_id"), ("Facility", "facility"), ("Severity", "severity"), ("Program", "program"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+
+    def textbox(name: str, label: str) -> dict:
+        return {
+            "type": "textbox", "name": name, "label": label, "value": "_o2_all_",
+            "options": [], "multiSelect": False, "hideOnDashboard": False,
+            "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True,
+        }
+
+    return dashboard(
+        "FortiGate Event Investigation",
+        "Filter-driven FortiGate session, NAT, policy, UTM, administrative and raw-event troubleshooting.",
+        [
+            build_tab("fortigate", "fg_inv_summary", "Investigation Summary", summary),
+            build_tab("fortigate", "fg_inv_results", "Matching Events", results),
+            build_tab("fortigate", "fg_inv_sessions", "Session & NAT Trace", sessions),
+            build_tab("fortigate", "fg_inv_policy", "Policy & Security", policy_security),
+            build_tab("fortigate", "fg_inv_system", "Admin, VPN, HA & Routing", system),
+            build_tab("fortigate", "fg_inv_raw", "Raw Evidence", raw),
+        ],
+        relative_period="24h",
+        extra_variables=[
+            textbox("src_ip", "Source / translated IP"),
+            textbox("dst_ip", "Destination / translated IP"),
+            textbox("fg_user", "User"),
+            textbox("session_id", "Session ID"),
+            textbox("policy", "Policy ID or name"),
+            textbox("vdom", "VDOM"),
+            textbox("search_text", "Application, host, URL, threat or text"),
+        ],
+    )
 
 
 def juniper_dashboard() -> dict:
@@ -1049,13 +1120,15 @@ def validate_queries(base: str, org: str, user: str, password: str,
         for tab in body["tabs"]:
             for panel in tab["panels"]:
                 checked += 1
+                sql = panel["queries"][0]["query"]
+                for variable in body["variables"]["list"]:
+                    replacement = ("'192.0.2.254'" if variable["name"] == "source"
+                                   else "'dashboard-validation'" if variable["type"] == "query_values"
+                                   else "_o2_all_")
+                    sql = sql.replace(f"${variable['name']}", replacement)
                 request = {
                     "query": {
-                        "sql": panel["queries"][0]["query"].replace(
-                            "$device", "'dashboard-validation'").replace(
-                            "$source", "'192.0.2.254'").replace(
-                            "$sender", "_o2_all_").replace(
-                            "$recipient", "_o2_all_"),
+                        "sql": sql,
                         "start_time": int(start.timestamp() * 1_000_000),
                         "end_time": int(end.timestamp() * 1_000_000),
                         "from": 0,
@@ -1076,7 +1149,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
-    parser.add_argument("--only", choices=("pmg", "pmg-reporting", "pmg-investigation", "fortigate", "juniper", "proxmox-ve", "ubersmith", "ubersmith-mail", "unclassified", "overview"))
+    parser.add_argument("--only", choices=("pmg", "pmg-reporting", "pmg-investigation", "fortigate", "fortigate-investigation", "juniper", "proxmox-ve", "ubersmith", "ubersmith-mail", "unclassified", "overview"))
     parser.add_argument("--bootstrap-schema", action="store_true",
                         help="create the selected future stream schema with one excluded marker")
     parser.add_argument("--validate-queries", action="store_true",
@@ -1085,6 +1158,7 @@ def main() -> int:
     dashboards = {
         **pmg_dashboards(),
         "fortigate": fortigate_dashboard(),
+        "fortigate-investigation": fortigate_investigation_dashboard(),
         "juniper": juniper_dashboard(),
         "proxmox-ve": proxmox_ve_dashboard(),
         "ubersmith": ubersmith_dashboard(),
@@ -1094,6 +1168,9 @@ def main() -> int:
     }
     if args.only == "pmg":
         dashboards = {key: body for key, body in dashboards.items() if key.startswith("pmg-")}
+    elif args.only == "fortigate":
+        dashboards = {key: body for key, body in dashboards.items()
+                      if key == "fortigate" or key.startswith("fortigate-")}
     elif args.only == "ubersmith":
         dashboards = {key: body for key, body in dashboards.items()
                       if key == "ubersmith" or key.startswith("ubersmith-")}

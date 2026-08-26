@@ -25,6 +25,25 @@ The bundled dashboard has dedicated views for:
 - Web and DNS filtering: hostname, URL, HTTP method, action, user, policy and content-risk fields when supplied.
 - Antivirus, file filtering, DLP, email filtering, SSL inspection, WAF, CASB and virtual-patch event families.
 
+## Troubleshooting dashboard
+
+Use **FortiGate Event Investigation** when the question is what happened to a
+specific connection or event. Set one or more dashboard filters and apply them:
+
+- source or translated IP;
+- destination or translated IP;
+- username;
+- FortiGate session ID;
+- policy ID or partial policy name;
+- VDOM;
+- application, category, hostname, URL, threat signature, or message text.
+
+The dashboard then provides a chronological event list, per-session summary,
+session timeline, NAT translation evidence, policy decisions, UTM/threat
+evidence, administrative/VPN/HA/routing evidence, and raw syslog. Start with a
+narrow time range and source/destination IP, then copy the session ID into its
+filter to isolate the complete session trace. Blank filters mean all values.
+
 FortiOS schemas vary by release and licensed profile. The generic key/value parser retains fields that are not yet named in a dashboard, and every event keeps `raw_message`; a new field therefore does not require a collector parser change. The dashboard only counts a security family after the FortiGate actually emits those logs.
 
 Apply the desired security profiles to policies and enable logging for the profile/event types you need. UTM inspection and policy traffic logging are separate decisions: a license alone does not cause every event to be sent. Application-control and web/DNS logs can be high volume, so monitor `/opt/logging-data` after enabling them. Prefer `utm`/security events plus policy violations initially, then add allowed-session logging only where reporting requires it.

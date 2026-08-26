@@ -5,13 +5,13 @@ HTTP APIs. It does not modify the internal SQLite database.
 
 ## Dashboards and folders
 
-`scripts/provision-dashboards.py` owns nine dashboards and their folders:
+`scripts/provision-dashboards.py` owns ten dashboards and their folders:
 
 | Folder | Dashboards |
 |---|---|
 | Logging Overview | Central Logging Overview |
 | Messaging | PMG Mail Reporting; PMG Message Investigation; PMG to Ubersmith Mail Handoff |
-| Network & Security | FortiGate Security & Traffic; Juniper Router Operations |
+| Network & Security | FortiGate Security & Traffic; FortiGate Event Investigation; Juniper Router Operations |
 | Infrastructure | Proxmox VE Operations |
 | Applications | Ubersmith Billing Operations |
 | Source Discovery | Unclassified Source Discovery |
@@ -24,6 +24,12 @@ other dashboards default to 24 hours to keep interactive queries responsive.
 PMG Message Investigation and PMG to Ubersmith Mail Handoff have free-form
 sender and recipient inputs for message, Message-ID and Postfix queue
 correlation.
+
+FortiGate Event Investigation is separate from the reporting dashboard. It has
+filters for source/translated IP, destination/translated IP, user, session ID,
+policy ID/name, VDOM, and application/host/URL/threat/free text. Its tabs trace
+matching events, session and NAT evidence, policy decisions, UTM/security
+evidence, administrative/VPN/HA/routing activity, and the preserved raw event.
 
 ## Visualization conventions
 
