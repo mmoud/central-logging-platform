@@ -29,6 +29,19 @@ The **Ubersmith Billing Operations** dashboard has independent tabs for:
 - Redis, ClamAV and supporting-service events;
 - recent and raw-event troubleshooting.
 
+The separate **PMG to Ubersmith Mail Ingestion** dashboard uses the observed
+`ubersmith/mail` Postfix events. It reports Message-ID and queue-ID activity,
+senders, recipients, relay/delivery state, DSN, delay, and raw mail events. Its
+sender and recipient inputs correlate the PMG filter ID and RFC Message-ID with
+the Ubersmith Postfix queue and timeline.
+
+This proves that Ubersmith's mail layer received and processed a message. It
+does not claim that a ticket was created: current `ubersmith/web` and
+`ubersmith/php` records contain ticket/queue application activity but do not
+share the mail Message-ID or Postfix queue ID. A future application-log change
+should emit the incoming RFC Message-ID together with the created Ubersmith
+ticket ID; only then should the dashboard add per-ticket correlation.
+
 Every event retains the original `raw_message`. The initial dashboard is
 deliberately based on stable normalized syslog fields and observed program
 families instead of fragile assumptions about proprietary message payloads.
@@ -39,4 +52,12 @@ Provision only this dashboard with:
 
 ```bash
 ./scripts/provision-dashboards.py --only ubersmith
+```
+
+That command provisions both Ubersmith Billing Operations and PMG to Ubersmith
+Mail Ingestion. Bootstrap the mail fields once before the first deployment:
+
+```bash
+./scripts/provision-dashboards.py --only ubersmith --bootstrap-schema
+./scripts/provision-dashboards.py --only ubersmith --validate-queries
 ```

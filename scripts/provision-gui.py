@@ -59,8 +59,8 @@ STREAM_SETTINGS = {
         "bloom_filter_fields": ["proxmox_upid", "proxmox_source_ip"],
     },
     "ubersmith": {
-        "index_fields": ["device_name", "syslog_program", "syslog_severity"],
-        "bloom_filter_fields": ["source_ip"],
+        "index_fields": ["device_name", "syslog_program", "syslog_severity", "mail_status"],
+        "bloom_filter_fields": ["source_ip", "mail_queue_id", "mail_message_id", "mail_sender", "mail_recipient"],
     },
     "unclassified": {
         "index_fields": ["syslog_program", "syslog_severity", "transport"],

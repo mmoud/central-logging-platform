@@ -27,12 +27,14 @@ def validate_dashboard(body: dict, expected_panels: int, period: str,
         assert variables[0]["name"] == variable
         assert variables[0]["type"] == "query_values"
         assert variables[0]["multiSelect"] is True
-        assert [item["name"] for item in variables[1:]] == list(extra_variables)
-        assert all(item["type"] == "textbox" for item in variables[1:])
-        assert all(item["value"] == "_o2_all_" for item in variables[1:])
-        assert all(item["escapeSingleQuotes"] is True for item in variables[1:])
+        text_variables = variables[1:]
     else:
-        assert variables == []
+        assert len(variables) == len(extra_variables)
+        text_variables = variables
+    assert [item["name"] for item in text_variables] == list(extra_variables)
+    assert all(item["type"] == "textbox" for item in text_variables)
+    assert all(item["value"] == "_o2_all_" for item in text_variables)
+    assert all(item["escapeSingleQuotes"] is True for item in text_variables)
     panels = [panel for tab in body["tabs"] for panel in tab["panels"]]
     assert len(panels) == expected_panels
     assert max(len(tab["panels"]) for tab in body["tabs"]) <= 6
@@ -101,6 +103,33 @@ def validate_pmg_bootstrap() -> None:
         assert record[field]
 
 
+def validate_ubersmith_bootstrap() -> None:
+    calls: list[tuple[str, list[dict]]] = []
+    original = MODULE.api_request
+
+    def capture(_base: str, path: str, _user: str, _password: str,
+                _method: str = "GET", data: list[dict] | None = None) -> dict:
+        calls.append((path, data or []))
+        return {}
+
+    try:
+        MODULE.api_request = capture
+        MODULE.bootstrap_schema("http://127.0.0.1:5080", "default", "user", "password", "ubersmith")
+    finally:
+        MODULE.api_request = original
+
+    assert len(calls) == 1
+    path, records = calls[0]
+    assert path == "/api/default/ubersmith/_json"
+    record = records[0]
+    assert record["schema_bootstrap"] == "true"
+    for field in (
+        "mail_message_id", "mail_queue_id", "mail_sender", "mail_recipient", "mail_relay",
+        "mail_status", "mail_dsn", "mail_delay", "mail_message_size", "mail_tls_protocol",
+    ):
+        assert record[field]
+
+
 def main() -> int:
     pmg = MODULE.pmg_dashboards()
     validate_dashboard(pmg["pmg-reporting"], 40, "7d")
@@ -109,13 +138,20 @@ def main() -> int:
     validate_bootstrap_exclusion(pmg["pmg-reporting"])
     validate_bootstrap_exclusion(pmg["pmg-investigation"])
     validate_pmg_bootstrap()
+    validate_ubersmith_bootstrap()
     validate_dashboard(MODULE.fortigate_dashboard(), 70, "24h")
     validate_dashboard(MODULE.juniper_dashboard(), 30, "24h")
     validate_dashboard(MODULE.proxmox_ve_dashboard(), 32, "24h", "source")
-    validate_dashboard(MODULE.ubersmith_dashboard(), 24, "24h")
+    ubersmith = MODULE.ubersmith_dashboard()
+    ubersmith_mail = MODULE.ubersmith_mail_dashboard()
+    validate_dashboard(ubersmith, 24, "24h")
+    validate_dashboard(ubersmith_mail, 15, "7d", None,
+                       extra_variables=("sender", "recipient"))
+    validate_bootstrap_exclusion(ubersmith)
+    validate_bootstrap_exclusion(ubersmith_mail)
     validate_dashboard(MODULE.unclassified_dashboard(), 24, "24h", "source")
     validate_dashboard(MODULE.central_overview_dashboard(), 22, "24h", None)
-    print("Dashboard definitions passed (251 panels).")
+    print("Dashboard definitions passed (266 panels).")
     return 0
 
 

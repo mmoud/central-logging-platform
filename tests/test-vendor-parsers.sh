@@ -76,10 +76,19 @@ assert_field 'PMG .*"tls_cipher":"TLS_AES_256_GCM_SHA384"'
 assert_field 'PMG .*"tls_trust":"Untrusted"'
 assert_field 'PMG .*"tls_direction":"to"'
 assert_field 'PMG .*"tls_peer_port":"25"'
+assert_field 'UBERSMITH .*"queue_id":"A1B2C3D4E5"'
+assert_field 'UBERSMITH .*"sender":"sender@example.org"'
+assert_field 'UBERSMITH .*"recipient":"user@example.net"'
+assert_field 'UBERSMITH .*"relay":"mx.example.net\[192.0.2.25\]:25"'
+assert_field 'UBERSMITH .*"status":"sent"'
+assert_field 'UBERSMITH .*"dsn":"2.0.0"'
+assert_field 'UBERSMITH .*"delay":"1.2"'
+assert_field 'UBERSMITH .*"message_id":"original@example.org"'
+assert_field 'UBERSMITH .*"message_size":"2345"'
 if grep -E 'PROXMOX .*"PROGRAM":"systemd"' "$output" | grep -q 'authentication_result'; then
   echo 'A systemd service failure was incorrectly classified as an authentication result.' >&2
   cat "$output" >&2
   exit 1
 fi
 
-echo 'Juniper, Proxmox VE, and PMG parser samples passed.'
+echo 'Juniper, Proxmox VE, PMG, and Ubersmith parser samples passed.'

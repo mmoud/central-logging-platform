@@ -22,6 +22,7 @@ DASHBOARD_FOLDERS = {
     "juniper": ("Network & Security", "Firewall, router and network security reporting."),
     "proxmox-ve": ("Infrastructure", "Virtualization and host operations."),
     "ubersmith": ("Applications", "Application and business-system operations."),
+    "ubersmith-mail": ("Messaging", "PMG handoff and Ubersmith mail-ingestion reporting."),
     "unclassified": ("Source Discovery", "Unknown-source discovery and onboarding."),
     "overview": ("Logging Overview", "Cross-platform collection and freshness overview."),
 }
@@ -103,7 +104,7 @@ def make_panel(
     # Pre-staged source schemas may contain one explicit bootstrap marker.
     # Exclude it from every affected query so validation never changes the
     # operational totals shown after real devices begin sending logs.
-    if schema_exclusion and stream in {"juniper", "proxmox_ve", "proxmox_mail_gateway"}:
+    if schema_exclusion and stream in {"juniper", "proxmox_ve", "proxmox_mail_gateway", "ubersmith"}:
         marker = "coalesce(schema_bootstrap,'false') <> 'true'"
         query = add_sql_condition(query, marker)
 
@@ -602,6 +603,85 @@ def ubersmith_dashboard() -> dict:
     ])
 
 
+def ubersmith_mail_dashboard() -> dict:
+    """PMG handoff and Ubersmith Postfix ingestion/delivery reporting."""
+    u = '"ubersmith"'
+    p = '"proxmox_mail_gateway"'
+    overview = [
+        ("Ubersmith Mail Events", "metric", f"SELECT count(*) AS value FROM {u} WHERE syslog_program = 'ubersmith/mail'", [], [("Events", "value")]),
+        ("Unique Message-IDs", "metric", f"SELECT count(DISTINCT mail_message_id) AS value FROM {u} WHERE mail_message_id IS NOT NULL", [], [("Messages", "value")]),
+        ("Successful Deliveries", "metric", f"SELECT count(*) AS value FROM {u} WHERE lower(coalesce(mail_status,'')) IN ('sent','delivered')", [], [("Delivered", "value")]),
+        ("Deferred / Bounced", "metric", f"SELECT count(*) AS value FROM {u} WHERE lower(coalesce(mail_status,'')) IN ('deferred','bounced','rejected')", [], [("Events", "value")]),
+        ("Postfix Queue IDs", "metric", f"SELECT count(DISTINCT mail_queue_id) AS value FROM {u} WHERE mail_queue_id IS NOT NULL", [], [("Queues", "value")]),
+        ("Last Mail Event", "metric", f"SELECT max(_timestamp) AS value FROM {u} WHERE syslog_program = 'ubersmith/mail'", [], [("Last Event", "value")]),
+        ("Mail Activity", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {u} WHERE syslog_program = 'ubersmith/mail' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Delivery Status", "donut", f"SELECT coalesce(mail_status,'processing / other') AS label, count(*) AS value FROM {u} WHERE syslog_program = 'ubersmith/mail' GROUP BY label ORDER BY value DESC", [("Status", "label")], [("Events", "value")]),
+    ]
+    identities = [
+        ("Envelope Senders", "table", f"SELECT mail_sender AS sender, count(*) AS value FROM {u} WHERE mail_sender IS NOT NULL GROUP BY mail_sender ORDER BY value DESC LIMIT 100", [("Sender", "sender")], [("Events", "value")]),
+        ("Recipients", "table", f"SELECT mail_recipient AS recipient, count(*) AS value FROM {u} WHERE mail_recipient IS NOT NULL GROUP BY mail_recipient ORDER BY value DESC LIMIT 100", [("Recipient", "recipient")], [("Events", "value")]),
+        ("Relay Destinations", "table", f"SELECT mail_relay AS relay, count(*) AS value FROM {u} WHERE mail_relay IS NOT NULL GROUP BY mail_relay ORDER BY value DESC LIMIT 100", [("Relay", "relay")], [("Deliveries", "value")]),
+        ("Slowest Ubersmith Mail Deliveries", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, mail_recipient AS recipient, mail_relay AS relay, mail_delay AS delay, mail_delays AS stages, mail_dsn AS dsn, mail_status AS status, message FROM {u} WHERE mail_delay IS NOT NULL ORDER BY try_cast(mail_delay AS DOUBLE) DESC LIMIT 100", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Recipient", "recipient"), ("Relay", "relay"), ("Delay", "delay"), ("Stages", "stages"), ("DSN", "dsn"), ("Status", "status"), ("Message", "message")], []),
+    ]
+    sender_match = "('$sender' = '_o2_all_' OR lower(coalesce(mail_header_sender,'')) = lower('$sender') OR lower(coalesce(mail_envelope_sender,'')) = lower('$sender') OR lower(coalesce(mail_sender,'')) = lower('$sender'))"
+    recipient_match = "('$recipient' = '_o2_all_' OR lower(coalesce(mail_envelope_recipients,'')) = lower('$recipient') OR lower(coalesce(mail_recipient,'')) = lower('$recipient') OR lower(coalesce(mail_header_to,'')) LIKE concat('%', lower('$recipient'), '%'))"
+    matching_filters = (
+        f"WITH matching_filters AS (SELECT DISTINCT mail_filter_id FROM {p} "
+        "WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_filter_id IS NOT NULL "
+        f"AND {sender_match} AND {recipient_match}) "
+    )
+    correlated_messages = (
+        matching_filters
+        + f", pmg_messages AS (SELECT mail_filter_id, max(mail_message_id) AS pmg_message_id, "
+          "max(mail_header_sender) AS pmg_sender, max(mail_header_to) AS pmg_recipient, "
+          "max(mail_subject) AS pmg_subject, max(mail_linked_queue_id) AS pmg_delivery_queue, "
+          f"max(_timestamp) AS pmg_last_event FROM {p} WHERE coalesce(schema_bootstrap,'false') <> 'true' "
+          "AND mail_filter_id IN (SELECT mail_filter_id FROM matching_filters) GROUP BY mail_filter_id), "
+          f"ubersmith_receipts AS (SELECT mail_message_id AS u_message_id, min(_timestamp) AS u_first_event, "
+          "max(mail_queue_id) AS u_queue_id, max(mail_status) AS u_status, count(*) AS u_event_count "
+          f"FROM {u} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_message_id IS NOT NULL "
+          "GROUP BY mail_message_id) "
+    )
+    matched_queues = (
+        matching_filters
+        + f", matching_message_ids AS (SELECT DISTINCT mail_message_id AS matched_message_id FROM {p} "
+          "WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_message_id IS NOT NULL "
+          "AND mail_filter_id IN (SELECT mail_filter_id FROM matching_filters)), "
+          f"matching_ubersmith_queues AS (SELECT DISTINCT mail_queue_id AS matched_queue_id FROM {u} "
+          "WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_queue_id IS NOT NULL "
+          "AND mail_message_id IN (SELECT matched_message_id FROM matching_message_ids)) "
+    )
+    investigation_options = {"dashboard_filter": False, "schema_exclusion": False}
+    investigation = [
+        ("PMG to Ubersmith Message Correlation", "table", correlated_messages + "SELECT p.pmg_last_event AS event_time, p.mail_filter_id AS filter_id, p.pmg_message_id AS message_id, p.pmg_sender AS sender, p.pmg_recipient AS recipient, p.pmg_subject AS subject, p.pmg_delivery_queue AS pmg_queue_id, u.u_first_event AS ubersmith_first_seen, u.u_queue_id AS ubersmith_queue_id, CASE WHEN u.u_message_id IS NOT NULL THEN 'received by Ubersmith mail layer' ELSE 'not correlated in selected range' END AS ingestion_result, u.u_status AS ubersmith_status, u.u_event_count AS ubersmith_events FROM pmg_messages p LEFT JOIN ubersmith_receipts u ON lower(p.pmg_message_id) = lower(u.u_message_id) ORDER BY event_time DESC LIMIT 250", [("PMG Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Message-ID", "message_id"), ("Sender", "sender"), ("Recipient", "recipient"), ("Subject", "subject"), ("PMG Queue ID", "pmg_queue_id"), ("Ubersmith First Seen", "ubersmith_first_seen"), ("Ubersmith Queue ID", "ubersmith_queue_id"), ("Ingestion Result", "ingestion_result"), ("Ubersmith Status", "ubersmith_status"), ("Ubersmith Events", "ubersmith_events")], [], investigation_options),
+        ("Ubersmith Mail Queue Timeline", "table", matched_queues + f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, mail_message_id AS message_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_dsn AS dsn, mail_status AS status, mail_delay AS delay, message FROM {u} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_queue_id IN (SELECT matched_queue_id FROM matching_ubersmith_queues) ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Message-ID", "message_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("DSN", "dsn"), ("Status", "status"), ("Delay", "delay"), ("Message", "message")], [], investigation_options),
+    ]
+    raw = [
+        ("Recent Ubersmith Mail Events", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, mail_message_id AS message_id, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_dsn AS dsn, mail_status AS status, message, raw_message FROM {u} WHERE syslog_program = 'ubersmith/mail' ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Message-ID", "message_id"), ("Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("DSN", "dsn"), ("Status", "status"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    return dashboard(
+        "PMG to Ubersmith Mail Ingestion",
+        "Tracks PMG handoff into Ubersmith's Postfix mail layer. Ticket creation is not claimed unless Ubersmith emits a shared Message-ID or ticket identifier.",
+        [
+            build_tab("ubersmith", "uber_mail_overview", "Overview", overview[:6], dashboard_filter=False),
+            build_tab("ubersmith", "uber_mail_activity", "Activity & Status", overview[6:], dashboard_filter=False),
+            build_tab("ubersmith", "uber_mail_identities", "Senders, Recipients & Delivery", identities, dashboard_filter=False),
+            build_tab("ubersmith", "uber_mail_investigation", "End-to-End Investigation", investigation, dashboard_filter=False),
+            build_tab("ubersmith", "uber_mail_raw", "Ubersmith Mail Events", raw, dashboard_filter=False),
+        ],
+        stream=None,
+        relative_period="7d",
+        extra_variables=[
+            {"type": "textbox", "name": "sender", "label": "Sender email", "value": "_o2_all_",
+             "options": [], "multiSelect": False, "hideOnDashboard": False,
+             "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
+            {"type": "textbox", "name": "recipient", "label": "Recipient email", "value": "_o2_all_",
+             "options": [], "multiSelect": False, "hideOnDashboard": False,
+             "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
+        ],
+    )
+
+
 def unclassified_dashboard() -> dict:
     """Discovery reporting for every source not yet mapped by an administrator."""
     s = '"unclassified"'
@@ -861,9 +941,36 @@ def bootstrap_schema(base: str, org: str, user: str, password: str, name: str) -
             "mail_reject_reason": "none",
             "mail_direction": "inbound",
         },
+        "ubersmith": {
+            **common,
+            "mail_message_id": "schema-bootstrap@example.invalid",
+            "mail_queue_id": "SCHEMA0001",
+            "mail_sender": "sender@example.invalid",
+            "mail_sender_domain": "example.invalid",
+            "mail_recipient": "recipient@example.invalid",
+            "mail_recipient_domain": "example.invalid",
+            "mail_relay": "relay.example.invalid[198.51.100.20]:25",
+            "mail_destination_ip": "198.51.100.20",
+            "mail_smtp_response_code": "250",
+            "mail_dsn": "2.0.0",
+            "mail_status": "sent",
+            "mail_delay": "0.1",
+            "mail_delays": "0.01/0.01/0.01/0.07",
+            "mail_message_size": "1024",
+            "mail_source_ip": "192.0.2.10",
+            "mail_source_hostname": "sender.example.invalid",
+            "mail_tls_trust": "Verified",
+            "mail_tls_direction": "from",
+            "mail_tls_peer_hostname": "pmg.example.invalid",
+            "mail_tls_peer_ip": "192.0.2.10",
+            "mail_tls_peer_port": "25",
+            "mail_tls_protocol": "TLSv1.3",
+            "mail_tls_cipher": "TLS_AES_256_GCM_SHA384",
+            "mail_tls_cipher_bits": "256/256",
+        },
     }
     if name not in records:
-        raise RuntimeError("schema bootstrap is only supported for pmg, juniper, and proxmox-ve")
+        raise RuntimeError("schema bootstrap is only supported for pmg, juniper, proxmox-ve, and ubersmith")
     stream = {"pmg": "proxmox_mail_gateway", "proxmox-ve": "proxmox_ve"}.get(name, name)
     encoded_org = urllib.parse.quote(org, safe="")
     encoded_stream = urllib.parse.quote(stream, safe="")
@@ -954,7 +1061,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
-    parser.add_argument("--only", choices=("pmg", "pmg-reporting", "pmg-investigation", "fortigate", "juniper", "proxmox-ve", "ubersmith", "unclassified", "overview"))
+    parser.add_argument("--only", choices=("pmg", "pmg-reporting", "pmg-investigation", "fortigate", "juniper", "proxmox-ve", "ubersmith", "ubersmith-mail", "unclassified", "overview"))
     parser.add_argument("--bootstrap-schema", action="store_true",
                         help="create the selected future stream schema with one excluded marker")
     parser.add_argument("--validate-queries", action="store_true",
@@ -966,11 +1073,15 @@ def main() -> int:
         "juniper": juniper_dashboard(),
         "proxmox-ve": proxmox_ve_dashboard(),
         "ubersmith": ubersmith_dashboard(),
+        "ubersmith-mail": ubersmith_mail_dashboard(),
         "unclassified": unclassified_dashboard(),
         "overview": central_overview_dashboard(),
     }
     if args.only == "pmg":
         dashboards = {key: body for key, body in dashboards.items() if key.startswith("pmg-")}
+    elif args.only == "ubersmith":
+        dashboards = {key: body for key, body in dashboards.items()
+                      if key == "ubersmith" or key.startswith("ubersmith-")}
     elif args.only:
         dashboards = {args.only: dashboards[args.only]}
     if args.export_dir:
@@ -987,8 +1098,8 @@ def main() -> int:
         raise RuntimeError("missing required environment settings: " + ", ".join(missing))
     base = os.environ.get("OPENOBSERVE_INTERNAL_URL", "http://127.0.0.1:5080")
     if args.bootstrap_schema:
-        if args.only not in {"pmg", "juniper", "proxmox-ve"}:
-            raise RuntimeError("--bootstrap-schema requires --only pmg, juniper, or proxmox-ve")
+        if args.only not in {"pmg", "juniper", "proxmox-ve", "ubersmith"}:
+            raise RuntimeError("--bootstrap-schema requires --only pmg, juniper, proxmox-ve, or ubersmith")
         bootstrap_schema(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"],
                          os.environ["ZO_ROOT_USER_PASSWORD"], args.only)
         return 0
