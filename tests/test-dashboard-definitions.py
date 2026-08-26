@@ -83,7 +83,7 @@ def validate_pmg_bootstrap() -> None:
     record = records[0]
     assert record["schema_bootstrap"] == "true"
     for field in (
-        "mail_header_from", "mail_header_sender_domain", "mail_header_to",
+        "mail_header_from", "mail_header_sender", "mail_header_sender_domain", "mail_header_to",
         "mail_envelope_sender", "mail_envelope_sender_domain", "mail_envelope_recipients",
     ):
         assert record[field]

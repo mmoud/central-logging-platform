@@ -103,7 +103,8 @@ def route_conf(devices: list[dict[str, str]]) -> str:
         elif dev["stream"] == "proxmox_mail_gateway":
             parsers = (
                 "parser(p_mail_filter_id); parser(p_mail_queue_id); parser(p_mail_headers); "
-                "parser(p_mail_header_sender_domain); parser(p_mail_envelope_sender_domain); "
+                "parser(p_mail_header_sender); parser(p_mail_header_sender_domain); "
+                "parser(p_mail_envelope_sender_domain); "
                 "parser(p_mail_header_recipient_domain); parser(p_mail_envelope_recipient_domain); "
                 "parser(p_mail_pmg_message); parser(p_mail_pmg_rule); "
                 "parser(p_mail_pmg_processing_time); "

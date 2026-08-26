@@ -59,6 +59,16 @@ especially important for Microsoft 365 forwarding because Sender Rewriting
 Scheme (SRS) can rewrite the envelope sender while leaving the visible `From`
 header unchanged.
 
+Use `mail_header_sender` for sender reporting. It contains the address-only
+value extracted from the decoded From header, while `mail_header_from` retains
+the complete display name and address and `mail_envelope_sender` retains the
+SRS/Return-Path identity used for bounces. Do not treat an address such as
+`bounces+SRS=...` as the message author.
+
+Microsoft documents this as expected forwarding behavior: SRS changes the
+RFC 5321 MAIL FROM/P1 identity but does not change the RFC 5322 From/P2 identity
+shown to recipients. See [Sender Rewriting Scheme in Microsoft 365](https://learn.microsoft.com/en-us/exchange/reference/sender-rewriting-scheme).
+
 Header logging has a privacy and data-volume cost: subject lines and display
 names become searchable log data and follow the OpenObserve retention policy.
 Enable it only when that is acceptable under the organization's mail and privacy
