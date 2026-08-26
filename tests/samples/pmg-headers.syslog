@@ -5,3 +5,5 @@
 <22>Aug 26 10:30:04 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: processing time: 0.421 seconds (0.200, 0.010, 0)
 <22>Aug 26 10:30:05 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: SA score=6/5 time=7.949 bayes=0.00 autolearn=no autolearn_force=no hits=DKIM_SIGNED(0.1),DKIM_VALID(-0.1),DMARC_REJECT(0.1),KAM_DMARC_REJECT(7),SPF_HELO_PASS(-0.001),SPF_PASS(-0.001)
 <22>Aug 26 10:30:06 sfilter pmg-smtp-filter[2201]: 2A3B4C5D6E: SA score=-1/5 time=0.421 bayes=0.00 autolearn=no autolearn_force=no hits=ARC_SIGNED(0.001),ARC_VALID(-0.1),DKIM_SIGNED(0.1),DKIM_VALID_AU(-0.1),DMARC_PASS(-0.1),SPF_PASS(-0.001)
+<22>Aug 26 10:30:07 pmg01 postfix/smtpd[2202]: Anonymous TLS connection established from mail.example.org[192.0.2.10]: TLSv1.3 with cipher TLS_AES_256_GCM_SHA384 (256/256 bits) key-exchange x25519
+<22>Aug 26 10:30:08 pmg01 postfix/smtp[2203]: Untrusted TLS connection established to relay.example.net[198.51.100.20]:25: TLSv1.3 with cipher TLS_AES_256_GCM_SHA384 (256/256 bits) key-exchange x25519

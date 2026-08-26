@@ -115,7 +115,7 @@ def route_conf(devices: list[dict[str, str]]) -> str:
                 "parser(p_mail_message_id); parser(p_mail_client); parser(p_mail_relay_ip); "
                 "parser(p_mail_spam); parser(p_mail_auth_summary); "
                 "parser(p_mail_spf_result); parser(p_mail_dkim_result); "
-                "parser(p_mail_dmarc_result); parser(p_mail_arc_result); "
+                "parser(p_mail_dmarc_result); parser(p_mail_arc_result); parser(p_mail_tls); "
             )
         lines += [
             f'filter f_{ident} {{ {"netmask6" if ":" in dev["ip"] else "netmask"}("{dev["ip"]}/{128 if ":" in dev["ip"] else 32}"); }};',

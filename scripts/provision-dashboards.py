@@ -97,11 +97,12 @@ def make_panel(
     description: str = "",
     unit: str | None = None,
     dashboard_filter: bool = True,
+    schema_exclusion: bool = True,
 ) -> dict:
     # Pre-staged source schemas may contain one explicit bootstrap marker.
     # Exclude it from every affected query so validation never changes the
     # operational totals shown after real devices begin sending logs.
-    if stream in {"juniper", "proxmox_ve", "proxmox_mail_gateway"}:
+    if schema_exclusion and stream in {"juniper", "proxmox_ve", "proxmox_mail_gateway"}:
         marker = "coalesce(schema_bootstrap,'false') <> 'true'"
         query = add_sql_condition(query, marker)
 
@@ -195,8 +196,10 @@ def build_tab(stream: str, tab_id: str, name: str, specs: list[dict],
         row_h = max(row_h, height)
         title, typ, sql, xs, ys, *rest = spec
         extra = rest[0] if rest else {}
+        panel_options = {"dashboard_filter": dashboard_filter}
+        panel_options.update(extra)
         panels.append(make_panel(stream, f"Panel_{tab_id}_{number}", title, typ, sql, xs, ys,
-                                 layout, dashboard_filter=dashboard_filter, **extra))
+                                 layout, **panel_options))
     return {"tabId": tab_id, "name": name, "panels": panels}
 
 
@@ -215,26 +218,26 @@ def pmg_dashboard() -> dict:
         ("Recent Mail Events", "table", f"SELECT _timestamp AS event_time, mail_filter_id AS filter_id, mail_message_id AS message_id, mail_queue_id AS queue_id, syslog_program AS component, mail_header_sender AS real_sender, mail_header_from AS from_header, mail_envelope_sender AS envelope_sender, mail_header_to AS header_recipient, mail_envelope_recipients AS envelope_recipients, mail_subject AS subject, mail_rule AS rule, mail_filter_action AS filter_action, mail_status AS status, message FROM {s} ORDER BY _timestamp DESC LIMIT 200", [("Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Message-ID", "message_id"), ("Queue ID", "queue_id"), ("Component", "component"), ("Real Sender Address", "real_sender"), ("From Header", "from_header"), ("Envelope / Return-Path", "envelope_sender"), ("Header Recipient", "header_recipient"), ("Envelope Recipient", "envelope_recipients"), ("Subject", "subject"), ("Rule", "rule"), ("Filter Action", "filter_action"), ("Status", "status"), ("Message", "message")], []),
     ]
     flow = [
-        ("Top Real Sender Addresses", "bar", f"SELECT mail_header_sender AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_header_sender IS NOT NULL AND mail_header_sender <> '' GROUP BY label ORDER BY value DESC LIMIT 20", [("Real Sender Address", "label")], [("Messages", "value")]),
+        ("Real Sender Addresses", "table", f"SELECT mail_header_sender AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_header_sender IS NOT NULL AND mail_header_sender <> '' GROUP BY label ORDER BY value DESC LIMIT 100", [("Real Sender Address", "label")], [("Messages", "value")]),
         ("Top Header Sender Domains", "bar", f"SELECT mail_header_sender_domain AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_header_sender_domain IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("Domain", "label")], [("Messages", "value")]),
-        ("Top Envelope Senders", "bar", f"SELECT mail_envelope_sender AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_envelope_sender IS NOT NULL AND mail_envelope_sender <> '' GROUP BY label ORDER BY value DESC LIMIT 20", [("Envelope Sender", "label")], [("Messages", "value")]),
+        ("Envelope Senders / Return-Path", "table", f"SELECT mail_envelope_sender AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_envelope_sender IS NOT NULL AND mail_envelope_sender <> '' GROUP BY label ORDER BY value DESC LIMIT 100", [("Envelope Sender", "label")], [("Messages", "value")]),
         ("Top Envelope Sender Domains", "bar", f"SELECT mail_envelope_sender_domain AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_envelope_sender_domain IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("Domain", "label")], [("Messages", "value")]),
-        ("Top Header Recipients", "bar", f"SELECT mail_header_to AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_header_to IS NOT NULL AND mail_header_to <> '' GROUP BY label ORDER BY value DESC LIMIT 20", [("Header Recipient", "label")], [("Messages", "value")]),
-        ("Top Envelope Recipients", "bar", f"SELECT mail_envelope_recipients AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_envelope_recipients IS NOT NULL AND mail_envelope_recipients <> '' GROUP BY label ORDER BY value DESC LIMIT 20", [("Envelope Recipient", "label")], [("Messages", "value")]),
+        ("Header Recipients", "table", f"SELECT mail_header_to AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_header_to IS NOT NULL AND mail_header_to <> '' GROUP BY label ORDER BY value DESC LIMIT 100", [("Header Recipient", "label")], [("Messages", "value")]),
+        ("Envelope Recipients", "table", f"SELECT mail_envelope_recipients AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_envelope_recipients IS NOT NULL AND mail_envelope_recipients <> '' GROUP BY label ORDER BY value DESC LIMIT 100", [("Envelope Recipient", "label")], [("Messages", "value")]),
         ("Flow Direction (by event)", "donut", f"SELECT CASE WHEN lower(message) LIKE '%client=%' OR lower(message) LIKE '%connect from %' THEN 'inbound receive' WHEN lower(message) LIKE '%relay=%' AND lower(message) LIKE '%status=%' THEN 'outbound delivery' ELSE 'internal processing' END AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC", [("Direction", "label")], [("Events", "value")]),
-        ("Top Relay Destinations", "bar", f"SELECT mail_relay AS label, count(*) AS value FROM {s} WHERE mail_relay IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("Relay", "label")], [("Deliveries", "value")]),
-        ("Top Source IPs", "bar", f"SELECT mail_source_ip AS label, count(*) AS value FROM {s} WHERE mail_source_ip IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("Source IP", "label")], [("Connections", "value")]),
+        ("Relay Destinations", "table", f"SELECT mail_relay AS label, count(*) AS value FROM {s} WHERE mail_relay IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 100", [("Relay", "label")], [("Deliveries", "value")]),
+        ("Source IPs", "table", f"SELECT mail_source_ip AS label, count(*) AS value FROM {s} WHERE mail_source_ip IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 100", [("Source IP", "label")], [("Connections", "value")]),
         ("SMTP Response Codes", "bar", f"SELECT mail_smtp_response_code AS label, count(*) AS value FROM {s} WHERE mail_smtp_response_code IS NOT NULL GROUP BY label ORDER BY value DESC", [("Code", "label")], [("Responses", "value")]),
         ("Transferred Message Bytes", "line", f"SELECT histogram(_timestamp, '1 day') AS ts, sum(try_cast(mail_message_size AS BIGINT)) AS value FROM {s} WHERE mail_message_size IS NOT NULL GROUP BY ts ORDER BY ts", [("Day", "ts")], [("Bytes", "value")], {"unit": "bytes"}),
         ("Slowest Deliveries", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, mail_recipient AS recipient, mail_relay AS relay, mail_delay AS delay, mail_delays AS stages, mail_status AS status, message FROM {s} WHERE mail_delay IS NOT NULL ORDER BY try_cast(mail_delay AS DOUBLE) DESC LIMIT 100", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Recipient", "recipient"), ("Relay", "relay"), ("Delay", "delay"), ("Stages", "stages"), ("Status", "status"), ("Message", "message")], []),
     ]
     filtering = [
         ("Rejections Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(message) LIKE '%reject:%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Rejected", "value")]),
-        ("Top Reject Reasons", "bar", f"SELECT message AS label, count(*) AS value FROM {s} WHERE lower(message) LIKE '%reject:%' GROUP BY label ORDER BY value DESC LIMIT 20", [("Reason", "label")], [("Events", "value")]),
+        ("Reject Reasons", "table", f"SELECT message AS label, count(*) AS value FROM {s} WHERE lower(message) LIKE '%reject:%' GROUP BY label ORDER BY value DESC LIMIT 100", [("Reason", "label")], [("Events", "value")]),
         ("Deferred by Relay", "bar", f"SELECT coalesce(mail_relay,'unknown') AS label, count(*) AS value FROM {s} WHERE lower(mail_status) = 'deferred' GROUP BY label ORDER BY value DESC LIMIT 20", [("Relay", "label")], [("Deferred", "value")]),
         ("DSN Distribution", "donut", f"SELECT mail_dsn AS label, count(*) AS value FROM {s} WHERE mail_dsn IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("DSN", "label")], [("Events", "value")]),
-        ("PMG Rules Matched", "bar", f"SELECT mail_rule AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_rule IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("Rule", "label")], [("Messages", "value")]),
-        ("PMG Filter Actions", "bar", f"SELECT mail_filter_action AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_filter_action IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("Action", "label")], [("Messages", "value")]),
+        ("PMG Rules Matched", "table", f"SELECT mail_rule AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_rule IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 100", [("Rule", "label")], [("Messages", "value")]),
+        ("PMG Filter Actions", "donut", f"SELECT mail_filter_action AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_filter_action IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("Action", "label")], [("Messages", "value")]),
         ("Spam Activity", "line", f"SELECT histogram(_timestamp, '1 day') AS ts, count(*) AS value FROM {s} WHERE lower(message) LIKE '%spam%' GROUP BY ts ORDER BY ts", [("Day", "ts")], [("Spam Events", "value")]),
         ("Virus / Malware Activity", "line", f"SELECT histogram(_timestamp, '1 day') AS ts, count(*) AS value FROM {s} WHERE lower(message) LIKE '%virus%' OR lower(message) LIKE '%malware%' GROUP BY ts ORDER BY ts", [("Day", "ts")], [("Malware Events", "value")]),
         ("Spam / Virus Detail", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, message, raw_message FROM {s} WHERE lower(message) LIKE '%spam%' OR lower(message) LIKE '%virus%' OR lower(message) LIKE '%malware%' ORDER BY _timestamp DESC LIMIT 200", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Message", "message"), ("Raw", "raw_message")], []),
@@ -248,6 +251,33 @@ def pmg_dashboard() -> dict:
         ("ARC Result", "donut", f"SELECT CASE mail_arc_result WHEN 'ARC_VALID' THEN 'valid' WHEN 'ARC_INVALID' THEN 'invalid' WHEN 'ARC_SIGNED' THEN 'signed, not validated' ELSE 'not reported' END AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_auth_hits IS NOT NULL GROUP BY label ORDER BY value DESC", [("Result", "label")], [("Messages", "value")]),
         ("DMARC Policy Failures Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_dmarc_result IN ('DMARC_REJECT','DMARC_QUAR') GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Failures", "value")]),
         ("Authentication Detail", "table", f"SELECT _timestamp AS event_time, mail_filter_id AS filter_id, mail_spam_score AS spam_score, mail_spam_threshold AS threshold, mail_spf_result AS spf, mail_dkim_result AS dkim, mail_dmarc_result AS dmarc, mail_arc_result AS arc, mail_auth_hits AS authentication_hits FROM {s} WHERE mail_auth_hits IS NOT NULL ORDER BY _timestamp DESC LIMIT 250", [("Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Spam Score", "spam_score"), ("Threshold", "threshold"), ("SPF", "spf"), ("DKIM", "dkim"), ("DMARC", "dmarc"), ("ARC", "arc"), ("Authentication Tests", "authentication_hits")], []),
+    ]
+    sender_match = "('$sender' = '_o2_all_' OR lower(coalesce(mail_header_sender,'')) = lower('$sender') OR lower(coalesce(mail_envelope_sender,'')) = lower('$sender') OR lower(coalesce(mail_sender,'')) = lower('$sender'))"
+    recipient_match = "('$recipient' = '_o2_all_' OR lower(coalesce(mail_envelope_recipients,'')) = lower('$recipient') OR lower(coalesce(mail_recipient,'')) = lower('$recipient') OR lower(coalesce(mail_header_to,'')) LIKE concat('%', lower('$recipient'), '%'))"
+    matching_filters = (
+        f"WITH matching_filters AS (SELECT DISTINCT mail_filter_id FROM {s} "
+        "WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) "
+        f"AND mail_filter_id IS NOT NULL AND {sender_match} AND {recipient_match}) "
+    )
+    matching_queues = (
+        matching_filters
+        + f", matching_queues AS (SELECT DISTINCT mail_linked_queue_id AS matched_queue_id FROM {s} "
+          "WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) "
+          "AND mail_linked_queue_id IS NOT NULL AND mail_filter_id IN "
+          "(SELECT mail_filter_id FROM matching_filters)) "
+    )
+    investigation_options = {"dashboard_filter": False, "schema_exclusion": False}
+    investigation = [
+        ("Matching Messages", "table", matching_filters + f"SELECT max(_timestamp) AS event_time, mail_filter_id AS filter_id, max(mail_message_id) AS message_id, max(mail_header_sender) AS sender, max(mail_header_to) AS recipient, max(mail_subject) AS subject, max(mail_linked_queue_id) AS delivery_queue_id, max(mail_rule) AS rule, max(mail_filter_action) AS action, max(mail_spam_score) AS spam_score, max(mail_dmarc_result) AS dmarc FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) AND mail_filter_id IN (SELECT mail_filter_id FROM matching_filters) GROUP BY mail_filter_id ORDER BY event_time DESC LIMIT 250", [("Last Event", "event_time"), ("PMG Filter ID", "filter_id"), ("Message-ID", "message_id"), ("Sender", "sender"), ("Recipient", "recipient"), ("Subject", "subject"), ("Delivery Queue ID", "delivery_queue_id"), ("Rule", "rule"), ("Action", "action"), ("Spam Score", "spam_score"), ("DMARC", "dmarc")], [], investigation_options),
+        ("Filtering Timeline", "table", matching_filters + f"SELECT _timestamp AS event_time, mail_filter_id AS filter_id, syslog_program AS component, mail_header_sender AS sender, mail_header_to AS recipient, mail_subject AS subject, mail_rule AS rule, mail_filter_action AS action, mail_spam_score AS spam_score, mail_spf_result AS spf, mail_dkim_result AS dkim, mail_dmarc_result AS dmarc, message FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) AND mail_filter_id IN (SELECT mail_filter_id FROM matching_filters) ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Subject", "subject"), ("Rule", "rule"), ("Action", "action"), ("Spam Score", "spam_score"), ("SPF", "spf"), ("DKIM", "dkim"), ("DMARC", "dmarc"), ("Message", "message")], [], investigation_options),
+        ("Delivery Timeline", "table", matching_queues + f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_dsn AS dsn, mail_status AS status, mail_delay AS delay, mail_smtp_response_code AS response_code, message FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) AND mail_queue_id IN (SELECT matched_queue_id FROM matching_queues) ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Component", "component"), ("Envelope Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("DSN", "dsn"), ("Status", "status"), ("Delay", "delay"), ("Response", "response_code"), ("Message", "message")], [], investigation_options),
+    ]
+    tls = [
+        ("TLS Connections", "metric", f"SELECT count(*) AS value FROM {s} WHERE mail_tls_protocol IS NOT NULL", [], [("Connections", "value")]),
+        ("TLS Protocols", "donut", f"SELECT mail_tls_protocol AS label, count(*) AS value FROM {s} WHERE mail_tls_protocol IS NOT NULL GROUP BY label ORDER BY value DESC", [("Protocol", "label")], [("Connections", "value")]),
+        ("TLS Trust & Direction", "table", f"SELECT mail_tls_direction AS direction, mail_tls_trust AS trust, count(*) AS value FROM {s} WHERE mail_tls_protocol IS NOT NULL GROUP BY mail_tls_direction, mail_tls_trust ORDER BY value DESC", [("Direction", "direction"), ("Trust", "trust"), ("Connections", "value")], []),
+        ("TLS Ciphers", "table", f"SELECT mail_tls_cipher AS cipher, mail_tls_cipher_bits AS strength, count(*) AS value FROM {s} WHERE mail_tls_cipher IS NOT NULL GROUP BY mail_tls_cipher, mail_tls_cipher_bits ORDER BY value DESC", [("Cipher", "cipher"), ("Strength", "strength"), ("Connections", "value")], []),
+        ("Recent TLS Connections", "table", f"SELECT _timestamp AS event_time, mail_tls_direction AS direction, mail_tls_trust AS trust, mail_tls_peer_hostname AS peer, mail_tls_peer_ip AS peer_ip, mail_tls_peer_port AS peer_port, mail_tls_protocol AS protocol, mail_tls_cipher AS cipher, mail_tls_cipher_bits AS strength, syslog_program AS component, message FROM {s} WHERE mail_tls_protocol IS NOT NULL ORDER BY _timestamp DESC LIMIT 250", [("Time", "event_time"), ("Direction", "direction"), ("Trust", "trust"), ("Peer", "peer"), ("Peer IP", "peer_ip"), ("Peer Port", "peer_port"), ("Protocol", "protocol"), ("Cipher", "cipher"), ("Strength", "strength"), ("Component", "component"), ("Message", "message")], []),
     ]
     trace = [
         ("Queue-ID Correlation Timeline", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_status AS status, mail_delay AS delay, message, raw_message FROM {s} WHERE mail_queue_id IS NOT NULL ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("Status", "status"), ("Delay", "delay"), ("Message", "message"), ("Raw", "raw_message")], []),
@@ -266,8 +296,17 @@ def pmg_dashboard() -> dict:
         build_tab("proxmox_mail_gateway", "pmg_delivery_detail", "Rejected / Deferred", filtering[9:]),
         build_tab("proxmox_mail_gateway", "pmg_authentication", "Email Authentication", authentication[:6]),
         build_tab("proxmox_mail_gateway", "pmg_auth_detail", "Authentication Detail", authentication[6:]),
+        build_tab("proxmox_mail_gateway", "pmg_investigation", "Message Investigation", investigation),
+        build_tab("proxmox_mail_gateway", "pmg_tls", "TLS", tls),
         build_tab("proxmox_mail_gateway", "pmg_trace", "Queue Trace", trace[:1]),
         build_tab("proxmox_mail_gateway", "pmg_raw", "Raw Events", trace[1:]),
+    ], extra_variables=[
+        {"type": "textbox", "name": "sender", "label": "Sender email", "value": "_o2_all_",
+         "options": [], "multiSelect": False, "hideOnDashboard": False,
+         "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
+        {"type": "textbox", "name": "recipient", "label": "Recipient email", "value": "_o2_all_",
+         "options": [], "multiSelect": False, "hideOnDashboard": False,
+         "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
     ])
 
 
@@ -663,7 +702,8 @@ def central_overview_dashboard() -> dict:
 
 
 def dashboard(title: str, description: str, tabs: list[dict], *, stream: str | None = "auto",
-              relative_period: str | None = None) -> dict:
+              relative_period: str | None = None,
+              extra_variables: list[dict] | None = None) -> dict:
     if stream == "auto":
         stream = tabs[0]["panels"][0]["queries"][0]["fields"]["stream"]
     variables: list[dict] = []
@@ -686,6 +726,7 @@ def dashboard(title: str, description: str, tabs: list[dict], *, stream: str | N
             "hideOnDashboard": False,
             "selectAllValueForMultiSelect": "all",
         })
+    variables.extend(extra_variables or [])
     if relative_period is None:
         relative_period = "7d" if title == "PMG Mail Reporting" else "24h"
     return {
@@ -801,6 +842,14 @@ def bootstrap_schema(base: str, org: str, user: str, password: str, name: str) -
             "mail_dkim_result": "DKIM_VALID_AU",
             "mail_dmarc_result": "DMARC_PASS",
             "mail_arc_result": "ARC_VALID",
+            "mail_tls_trust": "Verified",
+            "mail_tls_direction": "to",
+            "mail_tls_peer_hostname": "relay.example.invalid",
+            "mail_tls_peer_ip": "198.51.100.20",
+            "mail_tls_peer_port": "25",
+            "mail_tls_protocol": "TLSv1.3",
+            "mail_tls_cipher": "TLS_AES_256_GCM_SHA384",
+            "mail_tls_cipher_bits": "256/256",
             "mail_virus_result": "clean",
             "mail_reject_reason": "none",
             "mail_direction": "inbound",
@@ -875,7 +924,9 @@ def validate_queries(base: str, org: str, user: str, password: str,
                     "query": {
                         "sql": panel["queries"][0]["query"].replace(
                             "$device", "'dashboard-validation'").replace(
-                            "$source", "'192.0.2.254'"),
+                            "$source", "'192.0.2.254'").replace(
+                            "$sender", "_o2_all_").replace(
+                            "$recipient", "_o2_all_"),
                         "start_time": int(start.timestamp() * 1_000_000),
                         "end_time": int(end.timestamp() * 1_000_000),
                         "from": 0,

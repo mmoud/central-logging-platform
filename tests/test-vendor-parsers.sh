@@ -67,6 +67,15 @@ assert_field 'PMG .*"dmarc_result":"DMARC_REJECT"'
 assert_field 'PMG .*"arc_result":"ARC_VALID"'
 assert_field 'PMG .*"dkim_result":"DKIM_VALID_AU"'
 assert_field 'PMG .*"dmarc_result":"DMARC_PASS"'
+assert_field 'PMG .*"tls_trust":"Anonymous"'
+assert_field 'PMG .*"tls_direction":"from"'
+assert_field 'PMG .*"tls_peer_hostname":"mail.example.org"'
+assert_field 'PMG .*"tls_peer_ip":"192.0.2.10"'
+assert_field 'PMG .*"tls_protocol":"TLSv1.3"'
+assert_field 'PMG .*"tls_cipher":"TLS_AES_256_GCM_SHA384"'
+assert_field 'PMG .*"tls_trust":"Untrusted"'
+assert_field 'PMG .*"tls_direction":"to"'
+assert_field 'PMG .*"tls_peer_port":"25"'
 if grep -E 'PROXMOX .*"PROGRAM":"systemd"' "$output" | grep -q 'authentication_result'; then
   echo 'A systemd service failure was incorrectly classified as an authentication result.' >&2
   cat "$output" >&2

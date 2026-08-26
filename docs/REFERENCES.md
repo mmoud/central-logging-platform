@@ -13,6 +13,8 @@ Verified 2026-08-26. Prefer these upstream sources when changing the package.
 - [OpenObserve reports overview (scheduled and cached reports)](https://openobserve.ai/docs/user-guide/analytics/reports/)
 - [OpenObserve dashboard API](https://api.openobserve.ai/swagger/index.html)
 - [OpenObserve dashboard documentation](https://openobserve.ai/docs/user-guide/analytics/dashboards/)
+- [OpenObserve dashboard variable types and textbox inputs](https://openobserve.ai/docs/user-guide/analytics/dashboards/variables/variable-types/)
+- [OpenObserve dashboard variable refresh and substitution behavior](https://openobserve.ai/docs/user-guide/analytics/dashboards/variables/variables-in-openobserve/)
 - [OpenObserve streaming search](https://openobserve.ai/docs/user-guide/account-administration/management/streaming-search/)
 - [syslog-ng official image and configuration repository](https://github.com/syslog-ng/syslog-ng)
 - [syslog-ng OSE HTTP and durable disk-buffer options](https://origin-support.syslog-ng.com/technical-documents/doc/syslog-ng-open-source-edition/3.38/administration-guide/40)

@@ -96,6 +96,20 @@ signature or a validated ARC chain, and verify actual `ARC-Seal` and
 whitelist Microsoft 365 addresses or disable DMARC scoring merely because mail
 is forwarded.
 
+For Postfix connection-level TLS reporting, enable PMG's supported TLS logging
+options:
+
+```bash
+pmgsh set /config/mail --tls 1 --tlsheader 1 --tlslog 1
+pmgsh get /config/mail
+```
+
+The collector normalizes the resulting connection summaries into TLS trust,
+direction, peer host/IP/port, protocol, cipher, and cipher-strength fields.
+Postfix trust labels are retained verbatim. An `Untrusted` outbound connection
+is encrypted, but PMG did not validate the peer certificate as trusted; do not
+present it as certificate-verified TLS.
+
 Create or update the bundled mail dashboard through OpenObserve's supported API:
 
 ```bash
@@ -113,9 +127,22 @@ or appears in tables.
 
 The **PMG Mail Reporting** dashboard uses focused tabs for overview, volume and
 components, recent mail, senders and recipients, routing and SMTP, delivery,
-filtering, queue-ID trace, and raw events. Mail volume is counted by PMG filter
-ID—not Postfix queue hop. Original/header sender, envelope sender, header
-recipient, and envelope recipient are clearly labelled and reported separately.
+filtering, message investigation, TLS, queue-ID trace, and raw events. Mail
+volume is counted by PMG filter ID—not Postfix queue hop. Original/header sender,
+envelope sender, header recipient, and envelope recipient are clearly labelled
+and reported separately. Address, relay, source-IP, rule, and rejection rankings
+are tables so long identifiers remain readable; compact categorical summaries
+remain charts.
+
+For a mail investigation, open **Message Investigation**, enter a complete
+address in **Sender email**, **Recipient email**, or both, and click the
+dashboard Refresh button. `_o2_all_` means no restriction. **Matching Messages**
+shows one row per PMG filter ID, **Filtering Timeline** shows header parsing,
+authentication, rule, and quarantine/accept activity, and **Delivery Timeline**
+follows the linked Postfix queue ID through relay status, DSN, delay, and SMTP
+response. A quarantined or blocked message legitimately has no delivery queue.
+The lookup checks visible/header and SMTP-envelope identities, which is required
+for Microsoft 365 SRS forwarding.
 It also covers PMG rules/actions, delivery outcomes, domains, relays, source IPs,
 size, delay, DSN, SMTP response, spam, malware, rejects, deferrals, and queue-ID
 investigation. Separate **Email Authentication** and **Authentication Detail**
