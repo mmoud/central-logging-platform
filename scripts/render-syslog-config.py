@@ -13,7 +13,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 
 VALID_STREAMS = {
-    "fortigate", "cisco", "juniper", "proxmox_ve", "proxmox_mail_gateway", "linux", "unclassified"
+    "fortigate", "cisco", "juniper", "proxmox_ve", "proxmox_mail_gateway",
+    "linux", "ubersmith", "unclassified"
 }
 IDENT = re.compile(r"^[a-zA-Z0-9_.-]{1,63}$")
 

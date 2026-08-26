@@ -464,6 +464,55 @@ def proxmox_ve_dashboard() -> dict:
     ])
 
 
+def ubersmith_dashboard() -> dict:
+    """Operational reporting for Ubersmith application and supporting services."""
+    s = '"ubersmith"'
+    overview = [
+        ("Total Events", "metric", f"SELECT count(*) AS value FROM {s}", [], [("Events", "value")]),
+        ("Errors / Critical", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error')", [], [("Events", "value")]),
+        ("Mail Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%mail%'", [], [("Events", "value")]),
+        ("Web / PHP Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%web%' OR lower(coalesce(syslog_program,'')) LIKE '%php%'", [], [("Events", "value")]),
+        ("Background Service Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%cron%' OR lower(coalesce(syslog_program,'')) LIKE '%solr%' OR lower(coalesce(syslog_program,'')) LIKE '%redis%'", [], [("Events", "value")]),
+        ("Active Hosts", "metric", f"SELECT count(DISTINCT source_ip) AS value FROM {s} WHERE source_ip IS NOT NULL", [], [("Hosts", "value")]),
+    ]
+    trends = [
+        ("Events Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Severity Distribution", "donut", f"SELECT coalesce(syslog_severity,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC", [("Severity", "label")], [("Events", "value")]),
+        ("Events by Program", "bar", f"SELECT coalesce(syslog_program,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 25", [("Program", "label")], [("Events", "value")]),
+        ("Events by Host", "bar", f"SELECT coalesce(device_name,host_name,source_ip,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 20", [("Host", "label")], [("Events", "value")]),
+    ]
+    errors = [
+        ("Errors Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error') GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Errors", "value")]),
+        ("Errors by Program", "bar", f"SELECT coalesce(syslog_program,'unknown') AS label, count(*) AS value FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error') GROUP BY label ORDER BY value DESC LIMIT 25", [("Program", "label")], [("Errors", "value")]),
+        ("PHP Error Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%php%' AND lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error')", [], [("Errors", "value")]),
+        ("Recent Application Errors", "table", f"SELECT _timestamp AS event_time, device_name, host_name AS host, source_ip, syslog_program AS program, syslog_severity AS severity, message, raw_message FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error') ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Mapped Device", "device_name"), ("Host", "host"), ("Source IP", "source_ip"), ("Program", "program"), ("Severity", "severity"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    applications = [
+        ("Mail Activity", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%mail%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Web / PHP Activity", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%web%' OR lower(coalesce(syslog_program,'')) LIKE '%php%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Solr Activity", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%solr%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Cron Activity", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%cron%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+    ]
+    services = [
+        ("Redis Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%redis%'", [], [("Events", "value")]),
+        ("ClamAV Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%clamav%'", [], [("Events", "value")]),
+        ("Events by Source IP", "bar", f"SELECT source_ip AS label, count(*) AS value FROM {s} WHERE source_ip IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 20", [("Source IP", "label")], [("Events", "value")]),
+        ("Service Event Detail", "table", f"SELECT _timestamp AS event_time, device_name, host_name AS host, source_ip, syslog_program AS program, syslog_severity AS severity, message FROM {s} WHERE lower(coalesce(syslog_program,'')) LIKE '%solr%' OR lower(coalesce(syslog_program,'')) LIKE '%redis%' OR lower(coalesce(syslog_program,'')) LIKE '%cron%' OR lower(coalesce(syslog_program,'')) LIKE '%clamav%' ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Mapped Device", "device_name"), ("Host", "host"), ("Source IP", "source_ip"), ("Program", "program"), ("Severity", "severity"), ("Message", "message")], []),
+    ]
+    raw = [
+        ("Recent Ubersmith Events", "table", f"SELECT _timestamp AS event_time, received_at, device_name, host_name AS host, source_ip, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS program, message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Received", "received_at"), ("Mapped Device", "device_name"), ("Host", "host"), ("Source IP", "source_ip"), ("Facility", "facility"), ("Severity", "severity"), ("Program", "program"), ("Message", "message")], []),
+        ("Raw Ubersmith Events", "table", f"SELECT _timestamp AS event_time, device_name, source_ip, syslog_program AS program, message, raw_message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Mapped Device", "device_name"), ("Source IP", "source_ip"), ("Program", "program"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    return dashboard("Ubersmith Billing Operations", "Separate Ubersmith application, mail, PHP/web, Solr, cron, Redis and ClamAV operational reporting.", [
+        build_tab("ubersmith", "uber_overview", "Overview", overview),
+        build_tab("ubersmith", "uber_trends", "Trends & Sources", trends),
+        build_tab("ubersmith", "uber_errors", "Errors", errors),
+        build_tab("ubersmith", "uber_apps", "Application Activity", applications),
+        build_tab("ubersmith", "uber_services", "Supporting Services", services),
+        build_tab("ubersmith", "uber_raw", "Raw Events", raw),
+    ])
+
+
 def dashboard(title: str, description: str, tabs: list[dict]) -> dict:
     return {
         "version": 5,
@@ -598,7 +647,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
-    parser.add_argument("--only", choices=("pmg", "fortigate", "juniper", "proxmox-ve"))
+    parser.add_argument("--only", choices=("pmg", "fortigate", "juniper", "proxmox-ve", "ubersmith"))
     parser.add_argument("--bootstrap-schema", action="store_true",
                         help="create the selected future stream schema with one excluded marker")
     parser.add_argument("--validate-queries", action="store_true",
@@ -609,6 +658,7 @@ def main() -> int:
         "fortigate": fortigate_dashboard(),
         "juniper": juniper_dashboard(),
         "proxmox-ve": proxmox_ve_dashboard(),
+        "ubersmith": ubersmith_dashboard(),
     }
     if args.only:
         dashboards = {args.only: dashboards[args.only]}

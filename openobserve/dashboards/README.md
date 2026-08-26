@@ -29,6 +29,11 @@ tasks, HA, corosync/quorum, and failures. Provision either independently with
 `--only juniper` or `--only proxmox-ve`; this does not update the other
 dashboard definitions.
 
+**Ubersmith Billing Operations** is a separate 24-panel dashboard for
+application errors, mail, PHP/web, Solr, cron, Redis and ClamAV activity. It
+uses the dedicated `ubersmith` stream and can be provisioned independently with
+`--only ubersmith`.
+
 Before a future source sends its first log, OpenObserve has no stream/schema and
 cannot execute dashboard SQL. To validate a pre-staged Juniper or PVE dashboard,
 bootstrap only that schema:
