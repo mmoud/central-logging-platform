@@ -1,7 +1,7 @@
 # Bundled dashboards
 
 `scripts/provision-dashboards.py` contains the version-controlled definitions
-for the PMG, FortiGate, Juniper, Proxmox VE, Ubersmith, and unclassified-source dashboards and creates or updates them through
+for the fleet overview, PMG, FortiGate, Juniper, Proxmox VE, Ubersmith, and unclassified-source dashboards and creates or updates them through
 OpenObserve's supported dashboard API.
 
 Run `sudo ./scripts/provision-dashboards.py` from the installed platform
@@ -15,6 +15,18 @@ The generated directory is ignored by Git. Dashboard SQL uses the selected
 OpenObserve time range. PMG records are correlated at query time by
 `mail_queue_id`; the collector does not incorrectly merge separate Postfix
 events into one synthetic message.
+
+The separate 22-panel **Central Logging Overview** shows event counts, latest
+event timestamps, hourly volume, and a small set of triage indicators without
+combining vendor schemas. Each detailed dashboard has a query-backed device
+selector; the unclassified dashboard selects source IP instead. PMG opens at
+seven days by default, while the overview and other operational dashboards open
+at 24 hours. Users can still choose any time range in the GUI.
+
+Dashboard folders are created through the supported folders API: Logging
+Overview, Messaging, Network & Security, Infrastructure, Applications, and
+Source Discovery. Existing managed dashboards are moved into those folders;
+unrelated dashboards are untouched.
 
 The FortiGate definition includes 70 panels covering traffic, VDOMs, VPN,
 administration, HA, routing, application control, IPS, web/DNS filtering,

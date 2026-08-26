@@ -69,8 +69,9 @@ copy_package() {
   chown -R root:root "$PLATFORM_DIR"
   find "$PLATFORM_DIR" -type d -exec chmod 0750 {} +
   find "$PLATFORM_DIR" -type f -exec chmod 0640 {} +
-  find "$PLATFORM_DIR/scripts" -type f -name '*.sh' -exec chmod 0750 {} +
-  chmod 0750 "$PLATFORM_DIR/install.sh" "$PLATFORM_DIR/scripts/render-syslog-config.py"
+  chmod 0750 "$PLATFORM_DIR/install.sh"
+  find "$PLATFORM_DIR/scripts" "$PLATFORM_DIR/tests" -type f \
+    \( -name '*.sh' -o -name '*.py' \) -exec chmod 0750 {} +
 }
 
 create_env() {
@@ -120,6 +121,8 @@ main() {
   docker compose pull
   docker compose up -d
   ./scripts/healthcheck.sh --wait 180
+  ./scripts/provision-dashboards.py
+  ./scripts/provision-gui.py --skip-query-validation
   local endpoint
   # shellcheck disable=SC1091
   . ./.env

@@ -15,6 +15,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
+DASHBOARD_FOLDERS = {
+    "pmg": ("Messaging", "Mail flow, delivery and filtering reporting."),
+    "fortigate": ("Network & Security", "Firewall, router and network security reporting."),
+    "juniper": ("Network & Security", "Firewall, router and network security reporting."),
+    "proxmox-ve": ("Infrastructure", "Virtualization and host operations."),
+    "ubersmith": ("Applications", "Application and business-system operations."),
+    "unclassified": ("Source Discovery", "Unknown-source discovery and onboarding."),
+    "overview": ("Logging Overview", "Cross-platform collection and freshness overview."),
+}
+
+
 def load_env(path: Path) -> None:
     if not path.exists():
         raise RuntimeError(f"missing environment file: {path}")
@@ -59,6 +70,20 @@ def panel_config(panel_type: str, *, unit: str | None = None) -> dict:
     return config
 
 
+def add_sql_condition(query: str, condition: str) -> str:
+    """Add a condition before GROUP/ORDER/LIMIT without changing query shape."""
+    where_match = re.search(r"(?i)\bWHERE\b", query)
+    boundary_pattern = re.compile(r"(?i)\b(GROUP BY|ORDER BY|LIMIT)\b")
+    if where_match:
+        boundary = boundary_pattern.search(query, where_match.end())
+        end = boundary.start() if boundary else len(query)
+        current = query[where_match.end():end].strip()
+        return query[:where_match.start()] + f"WHERE {condition} AND ({current}) " + query[end:]
+    boundary = boundary_pattern.search(query)
+    end = boundary.start() if boundary else len(query)
+    return query[:end].rstrip() + f" WHERE {condition} " + query[end:]
+
+
 def make_panel(
     stream: str,
     ident: str,
@@ -71,24 +96,19 @@ def make_panel(
     *,
     description: str = "",
     unit: str | None = None,
+    dashboard_filter: bool = True,
 ) -> dict:
     # Pre-staged source schemas may contain one explicit bootstrap marker.
     # Exclude it from every Juniper/PVE query so validation never changes the
     # operational totals shown after real devices begin sending logs.
     if stream in {"juniper", "proxmox_ve"}:
         marker = "coalesce(schema_bootstrap,'false') <> 'true'"
-        where_match = re.search(r"(?i)\bWHERE\b", query)
-        boundary_pattern = re.compile(r"(?i)\b(GROUP BY|ORDER BY|LIMIT)\b")
-        if where_match:
-            boundary = boundary_pattern.search(query, where_match.end())
-            end = boundary.start() if boundary else len(query)
-            condition = query[where_match.end():end].strip()
-            query = (query[:where_match.start()] + f"WHERE {marker} AND ({condition}) " +
-                     query[end:])
-        else:
-            boundary = boundary_pattern.search(query)
-            end = boundary.start() if boundary else len(query)
-            query = query[:end].rstrip() + f" WHERE {marker} " + query[end:]
+        query = add_sql_condition(query, marker)
+
+    if dashboard_filter:
+        field = "source_ip" if stream == "unclassified" else "device_name"
+        variable = "source" if stream == "unclassified" else "device"
+        query = add_sql_condition(query, f"{field} IN (${variable})")
 
     # Dashboard schema v5's frontend is most reliable when custom SQL output
     # columns use its canonical x_axis_N/y_axis_N names. Keep friendly labels
@@ -148,7 +168,8 @@ def make_panel(
     }
 
 
-def build_tab(stream: str, tab_id: str, name: str, specs: list[dict]) -> dict:
+def build_tab(stream: str, tab_id: str, name: str, specs: list[dict],
+              *, dashboard_filter: bool = True) -> dict:
     panels = []
     row_y = 0
     row_x = 0
@@ -168,7 +189,8 @@ def build_tab(stream: str, tab_id: str, name: str, specs: list[dict]) -> dict:
         row_h = max(row_h, height)
         title, typ, sql, xs, ys, *rest = spec
         extra = rest[0] if rest else {}
-        panels.append(make_panel(stream, f"Panel_{tab_id}_{number}", title, typ, sql, xs, ys, layout, **extra))
+        panels.append(make_panel(stream, f"Panel_{tab_id}_{number}", title, typ, sql, xs, ys,
+                                 layout, dashboard_filter=dashboard_filter, **extra))
     return {"tabId": tab_id, "name": name, "panels": panels}
 
 
@@ -562,7 +584,88 @@ def unclassified_dashboard() -> dict:
     ])
 
 
-def dashboard(title: str, description: str, tabs: list[dict]) -> dict:
+def central_overview_dashboard() -> dict:
+    """A deliberately separate fleet overview; vendor detail stays isolated."""
+    sources = [
+        ("fortigate", "FortiGate"),
+        ("proxmox_mail_gateway", "Mail Gateway"),
+        ("juniper", "Juniper"),
+        ("proxmox_ve", "Proxmox VE"),
+        ("ubersmith", "Ubersmith"),
+        ("unclassified", "Unclassified"),
+    ]
+    tabs: list[dict] = []
+    for stream, label in sources:
+        quoted = f'"{stream}"'
+        specs = [
+            (f"{label} Events", "metric", f"SELECT count(*) AS value FROM {quoted}",
+             [], [("Events", "value")]),
+            (f"{label} Last Event", "metric", f"SELECT max(_timestamp) AS value FROM {quoted}",
+             [], [("Last Event", "value")]),
+            (f"{label} Volume", "line",
+             f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {quoted} GROUP BY ts ORDER BY ts",
+             [("Time", "ts")], [("Events", "value")]),
+        ]
+        tabs.append(build_tab(stream, f"central_{stream}", label, specs, dashboard_filter=False))
+
+    security_attention = [
+        ("FortiGate Denied / Blocked", "metric",
+         "SELECT count(*) AS value FROM \"fortigate\" WHERE lower(coalesce(fortigate_action,'')) IN ('deny','blocked','block','dropped')",
+         [], [("Events", "value")]),
+        ("FortiGate Threat Events", "metric",
+         "SELECT count(*) AS value FROM \"fortigate\" WHERE fortigate_attack IS NOT NULL OR lower(coalesce(fortigate_type,'')) IN ('utm','security')",
+         [], [("Events", "value")]),
+    ]
+    mail_attention = [
+        ("Mail Deferred / Rejected", "metric",
+         "SELECT count(*) AS value FROM \"proxmox_mail_gateway\" WHERE lower(coalesce(mail_status,'')) IN ('deferred','bounced','rejected') OR lower(message) LIKE '%reject:%'",
+         [], [("Events", "value")]),
+    ]
+    discovery_attention = [
+        ("Unclassified Errors", "metric",
+         "SELECT count(*) AS value FROM \"unclassified\" WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error')",
+         [], [("Events", "value")]),
+    ]
+    tabs.append(build_tab("fortigate", "central_security_attention", "Security Attention",
+                          security_attention, dashboard_filter=False))
+    tabs.append(build_tab("proxmox_mail_gateway", "central_mail_attention", "Mail Attention",
+                          mail_attention, dashboard_filter=False))
+    tabs.append(build_tab("unclassified", "central_discovery_attention", "Discovery Attention",
+                          discovery_attention, dashboard_filter=False))
+    return dashboard(
+        "Central Logging Overview",
+        "Separate fleet-level ingestion, freshness, volume and triage summary; use each vendor dashboard for detail.",
+        tabs,
+        stream=None,
+        relative_period="24h",
+    )
+
+
+def dashboard(title: str, description: str, tabs: list[dict], *, stream: str | None = "auto",
+              relative_period: str | None = None) -> dict:
+    if stream == "auto":
+        stream = tabs[0]["panels"][0]["queries"][0]["fields"]["stream"]
+    variables: list[dict] = []
+    if stream:
+        is_unclassified = stream == "unclassified"
+        variables.append({
+            "type": "query_values",
+            "name": "source" if is_unclassified else "device",
+            "label": "Source IP" if is_unclassified else "Device",
+            "query_data": {
+                "stream_type": "logs",
+                "stream": stream,
+                "field": "source_ip" if is_unclassified else "device_name",
+                "max_record_size": 1000,
+            },
+            "value": "",
+            "options": [],
+            "multiSelect": True,
+            "hideOnDashboard": False,
+            "selectAllValueForMultiSelect": "all",
+        })
+    if relative_period is None:
+        relative_period = "7d" if title == "PMG Mail Reporting" else "24h"
     return {
         "version": 5,
         "dashboardId": "",
@@ -572,8 +675,8 @@ def dashboard(title: str, description: str, tabs: list[dict]) -> dict:
         "owner": "",
         "created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "tabs": tabs,
-        "variables": {"list": [], "showDynamicFilters": True},
-        "defaultDatetimeDuration": {"type": "relative", "relativeTimePeriod": "30d"},
+        "variables": {"list": variables, "showDynamicFilters": True},
+        "defaultDatetimeDuration": {"type": "relative", "relativeTimePeriod": relative_period},
     }
 
 
@@ -647,17 +750,46 @@ def bootstrap_schema(base: str, org: str, user: str, password: str, name: str) -
     print(f"bootstrapped stream schema: {stream} (marker is excluded from bundled dashboards)")
 
 
-def upsert(base: str, org: str, user: str, password: str, body: dict) -> None:
+def ensure_folder(base: str, org: str, user: str, password: str, folder_type: str,
+                  name: str, description: str) -> str:
     encoded_org = urllib.parse.quote(org, safe="")
-    listing = api_request(base, f"/api/{encoded_org}/dashboards?folder=default", user, password)
+    path = f"/api/v2/{encoded_org}/folders/{folder_type}"
+    listing = api_request(base, path, user, password)
+    existing = next((item for item in listing.get("list", []) if item.get("name") == name), None)
+    if existing:
+        return existing["folderId"]
+    created = api_request(base, path, user, password, "POST",
+                          {"name": name, "description": description})
+    folder_id = created.get("folderId") or created.get("folder_id")
+    if not folder_id:
+        raise RuntimeError(f"folder creation returned no ID: {name}")
+    print(f"created {folder_type} folder: {name}")
+    return folder_id
+
+
+def upsert(base: str, org: str, user: str, password: str, body: dict,
+           folder_id: str) -> None:
+    encoded_org = urllib.parse.quote(org, safe="")
+    title_query = urllib.parse.urlencode({"title": body["title"]})
+    listing = api_request(base, f"/api/{encoded_org}/dashboards?{title_query}", user, password)
     existing = next((item for item in listing.get("dashboards", []) if item.get("title") == body["title"]), None)
     if existing:
+        source_folder = existing.get("folder_id", "default")
+        if source_folder != folder_id:
+            dash_id = urllib.parse.quote(existing["dashboard_id"], safe="")
+            api_request(base, f"/api/{encoded_org}/folders/dashboards/{dash_id}", user,
+                        password, "PUT", {"from": source_folder, "to": folder_id})
+            listing = api_request(base, f"/api/{encoded_org}/dashboards?{title_query}", user, password)
+            existing = next(item for item in listing.get("dashboards", [])
+                            if item.get("title") == body["title"])
+            print(f"moved dashboard to folder {folder_id}: {body['title']}")
         dash_id = urllib.parse.quote(existing["dashboard_id"], safe="")
-        query = urllib.parse.urlencode({"folder": "default", "hash": existing.get("hash", "")})
+        query = urllib.parse.urlencode({"folder": folder_id, "hash": existing.get("hash", "")})
         api_request(base, f"/api/{encoded_org}/dashboards/{dash_id}?{query}", user, password, "PUT", body)
         print(f"updated dashboard: {body['title']}")
     else:
-        api_request(base, f"/api/{encoded_org}/dashboards?folder=default", user, password, "POST", body)
+        folder_query = urllib.parse.urlencode({"folder": folder_id})
+        api_request(base, f"/api/{encoded_org}/dashboards?{folder_query}", user, password, "POST", body)
         print(f"created dashboard: {body['title']}")
 
 
@@ -675,7 +807,9 @@ def validate_queries(base: str, org: str, user: str, password: str,
                 checked += 1
                 request = {
                     "query": {
-                        "sql": panel["queries"][0]["query"],
+                        "sql": panel["queries"][0]["query"].replace(
+                            "$device", "'dashboard-validation'").replace(
+                            "$source", "'192.0.2.254'"),
                         "start_time": int(start.timestamp() * 1_000_000),
                         "end_time": int(end.timestamp() * 1_000_000),
                         "from": 0,
@@ -696,7 +830,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
-    parser.add_argument("--only", choices=("pmg", "fortigate", "juniper", "proxmox-ve", "ubersmith", "unclassified"))
+    parser.add_argument("--only", choices=("pmg", "fortigate", "juniper", "proxmox-ve", "ubersmith", "unclassified", "overview"))
     parser.add_argument("--bootstrap-schema", action="store_true",
                         help="create the selected future stream schema with one excluded marker")
     parser.add_argument("--validate-queries", action="store_true",
@@ -709,6 +843,7 @@ def main() -> int:
         "proxmox-ve": proxmox_ve_dashboard(),
         "ubersmith": ubersmith_dashboard(),
         "unclassified": unclassified_dashboard(),
+        "overview": central_overview_dashboard(),
     }
     if args.only:
         dashboards = {args.only: dashboards[args.only]}
@@ -735,8 +870,14 @@ def main() -> int:
         validate_queries(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"],
                          os.environ["ZO_ROOT_USER_PASSWORD"], dashboards)
         return 0
-    for body in dashboards.values():
-        upsert(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"], os.environ["ZO_ROOT_USER_PASSWORD"], body)
+    for key, body in dashboards.items():
+        folder_name, folder_description = DASHBOARD_FOLDERS[key]
+        folder_id = ensure_folder(base, os.environ["ZO_ORG"],
+                                  os.environ["ZO_ROOT_USER_EMAIL"],
+                                  os.environ["ZO_ROOT_USER_PASSWORD"], "dashboards",
+                                  folder_name, folder_description)
+        upsert(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"],
+               os.environ["ZO_ROOT_USER_PASSWORD"], body, folder_id)
     return 0
 
 

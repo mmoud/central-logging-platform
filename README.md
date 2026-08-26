@@ -67,7 +67,7 @@ The parsers deliberately remain conservative. Every FortiGate key/value field is
 ./scripts/test-buffering.sh
 ./tests/test-vendor-parsers.sh
 ./scripts/provision-dashboards.py
-./scripts/provision-alerts.py
+./scripts/provision-gui.py
 ./scripts/backup.sh [/safe/path/backup.tar.gz]
 sudo ./scripts/update.sh --check
 ```
@@ -95,11 +95,13 @@ For production, replace `syslog-ng/tls/server.key`, `server.crt`, and the trust 
 
 ## Reporting and starter searches
 
-Reports are available through the upstream Report Server image, but disabled by default so absent SMTP cannot impede collection. Set `COMPOSE_PROFILES=reports`, populate SMTP variables in `.env`, then run `docker compose up -d`. It stays internal to the Compose network. OpenObserve OSS dashboards, search and alerts are available; this package does not install the Enterprise edition.
+Reports are available through the upstream Report Server image, but disabled by default so absent SMTP cannot impede collection. Four disabled report templates are prepared in the GUI; they have no destination and cannot send. Set `COMPOSE_PROFILES=reports`, populate SMTP variables in `.env`, create and test a destination, attach it to a template, and only then enable the report. The service stays internal to the Compose network. This package uses OpenObserve OSS and does not install Enterprise.
 
-Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **PMG Mail Reporting**, **FortiGate Security & Traffic**, **Juniper Router Operations**, **Proxmox VE Operations**, **Ubersmith Billing Operations**, and **Unclassified Source Discovery** dashboards through OpenObserve's supported API. Each is an isolated dashboard object and stream; `--only juniper`, `--only proxmox-ve`, `--only ubersmith`, or `--only unclassified` provisions one without updating the others. The version-controlled definitions are documented under `openobserve/dashboards/`. Useful additional saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Never manipulate OpenObserve SQLite directly.
+Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **Central Logging Overview**, **PMG Mail Reporting**, **FortiGate Security & Traffic**, **Juniper Router Operations**, **Proxmox VE Operations**, **Ubersmith Billing Operations**, and **Unclassified Source Discovery** dashboards through OpenObserve's supported API. Each vendor remains an isolated dashboard and stream. The vendor dashboards have a query-backed Device selector (Source IP for unclassified logs); PMG defaults to seven days and the operational dashboards to 24 hours. Dashboards are grouped into purpose-specific GUI folders.
 
-`./scripts/provision-alerts.py` creates three unclassified-source rules: any activity, high five-minute volume, and error/critical activity. OpenObserve requires a destination or workflow even for disabled alerts, so provisioning is safely skipped until an existing, tested notification destination is named in `UNCLASSIFIED_ALERT_DESTINATION`. See [Unclassified source discovery](docs/UNCLASSIFIED.md).
+`./scripts/provision-gui.py` validates and provisions 12 saved investigation views, conservative exact-match/Bloom/full-text stream search fields, and the four disabled report templates. It never changes retention or partitioning. Use `--skip-stream-settings` or `--skip-reports` to omit those parts. See [OpenObserve GUI enhancements](docs/GUI-ENHANCEMENTS.md) for the complete inventory and operating notes. Never manipulate OpenObserve SQLite directly.
+
+Alert provisioning is intentionally deferred. No alert, destination, or workflow is created by the installer.
 
 ## Source guidance and limits
 
