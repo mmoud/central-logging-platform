@@ -47,7 +47,7 @@ def load_env(path: Path) -> None:
 def axis(label: str, alias: str, column: str, *, color: str | None = None,
          sort: str | None = None, aggregation: str | None = None) -> dict:
     item = {"label": label, "alias": alias, "column": column, "color": color,
-            "aggregationFunction": aggregation, "isDerived": False}
+            "functionName": aggregation, "isDerived": False}
     if sort:
         item["sortBy"] = sort
     return item
@@ -71,6 +71,10 @@ def panel_config(panel_type: str, *, unit: str | None = None) -> dict:
         "connect_nulls": False,
         "no_value_replacement": "-",
         "wrap_table_cells": panel_type == "table",
+        # Client-side column filters are deterministic and instantaneous. They
+        # also avoid OpenObserve v0.92.2's stale-row behavior when a refreshed
+        # streaming dashboard query returns fewer table rows.
+        "table_filtering": panel_type == "table",
     }
     if unit:
         config["unit"] = unit
@@ -124,13 +128,13 @@ def make_panel(
         variable = "source" if source_filter else "device"
         query = add_sql_condition(query, f"{field} IN (${variable})")
 
-    # Dashboard schema v5's frontend is most reliable when custom SQL output
+    # The dashboard frontend is most reliable when custom SQL output
     # columns use its canonical x_axis_N/y_axis_N names. Keep friendly labels
     # in the axis metadata while rewriting only SQL alias declarations and
     # GROUP/ORDER references (never source field names).
     # OpenObserve tables model the first selected column as X and every other
     # selected column as Y. A table with every column in X passes the API but
-    # the v5 renderer treats it as an incomplete panel and returns no rows.
+    # the renderer treats it as an incomplete panel and returns no rows.
     if panel_type == "table" and x_fields:
         table_fields = x_fields + y_fields
         x_fields = table_fields[:1]
@@ -261,25 +265,46 @@ def pmg_dashboards() -> dict[str, dict]:
         ("DMARC Policy Failures Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_dmarc_result IN ('DMARC_REJECT','DMARC_QUAR') GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Failures", "value")]),
         ("Authentication Detail", "table", f"SELECT _timestamp AS event_time, mail_filter_id AS filter_id, mail_spam_score AS spam_score, mail_spam_threshold AS threshold, mail_spf_result AS spf, mail_dkim_result AS dkim, mail_dmarc_result AS dmarc, mail_arc_result AS arc, mail_auth_hits AS authentication_hits FROM {s} WHERE mail_auth_hits IS NOT NULL ORDER BY _timestamp DESC LIMIT 250", [("Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Spam Score", "spam_score"), ("Threshold", "threshold"), ("SPF", "spf"), ("DKIM", "dkim"), ("DMARC", "dmarc"), ("ARC", "arc"), ("Authentication Tests", "authentication_hits")], []),
     ]
-    sender_match = "('$sender' = '_o2_all_' OR lower(coalesce(mail_header_sender,'')) = lower('$sender') OR lower(coalesce(mail_envelope_sender,'')) = lower('$sender') OR lower(coalesce(mail_sender,'')) = lower('$sender'))"
-    recipient_match = "('$recipient' = '_o2_all_' OR lower(coalesce(mail_envelope_recipients,'')) = lower('$recipient') OR lower(coalesce(mail_recipient,'')) = lower('$recipient') OR lower(coalesce(mail_header_to,'')) LIKE concat('%', lower('$recipient'), '%'))"
-    matching_filters = (
-        f"WITH matching_filters AS (SELECT DISTINCT mail_filter_id FROM {s} "
-        "WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) "
-        f"AND mail_filter_id IS NOT NULL AND {sender_match} AND {recipient_match}) "
-    )
-    matching_queues = (
-        matching_filters
-        + f", matching_queues AS (SELECT DISTINCT mail_linked_queue_id AS matched_queue_id FROM {s} "
-          "WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) "
-          "AND mail_linked_queue_id IS NOT NULL AND mail_filter_id IN "
-          "(SELECT mail_filter_id FROM matching_filters)) "
-    )
     investigation_options = {"dashboard_filter": False, "schema_exclusion": False}
     investigation = [
-        ("Matching Messages", "table", matching_filters + f"SELECT max(_timestamp) AS event_time, mail_filter_id AS filter_id, max(mail_message_id) AS message_id, max(mail_header_sender) AS sender, max(mail_header_to) AS recipient, max(mail_subject) AS subject, max(mail_linked_queue_id) AS delivery_queue_id, max(mail_rule) AS rule, max(mail_filter_action) AS action, max(mail_spam_score) AS spam_score, max(mail_dmarc_result) AS dmarc FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) AND mail_filter_id IN (SELECT mail_filter_id FROM matching_filters) GROUP BY mail_filter_id ORDER BY event_time DESC LIMIT 250", [("Last Event", "event_time"), ("PMG Filter ID", "filter_id"), ("Message-ID", "message_id"), ("Sender", "sender"), ("Recipient", "recipient"), ("Subject", "subject"), ("Delivery Queue ID", "delivery_queue_id"), ("Rule", "rule"), ("Action", "action"), ("Spam Score", "spam_score"), ("DMARC", "dmarc")], [], investigation_options),
-        ("Filtering Timeline", "table", matching_filters + f"SELECT _timestamp AS event_time, mail_filter_id AS filter_id, syslog_program AS component, mail_header_sender AS sender, mail_header_to AS recipient, mail_subject AS subject, mail_rule AS rule, mail_filter_action AS action, mail_spam_score AS spam_score, mail_spf_result AS spf, mail_dkim_result AS dkim, mail_dmarc_result AS dmarc, message FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) AND mail_filter_id IN (SELECT mail_filter_id FROM matching_filters) ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Subject", "subject"), ("Rule", "rule"), ("Action", "action"), ("Spam Score", "spam_score"), ("SPF", "spf"), ("DKIM", "dkim"), ("DMARC", "dmarc"), ("Message", "message")], [], investigation_options),
-        ("Delivery Timeline", "table", matching_queues + f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_dsn AS dsn, mail_status AS status, mail_delay AS delay, mail_smtp_response_code AS response_code, message FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND device_name IN ($device) AND mail_queue_id IN (SELECT matched_queue_id FROM matching_queues) ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Component", "component"), ("Envelope Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("DSN", "dsn"), ("Status", "status"), ("Delay", "delay"), ("Response", "response_code"), ("Message", "message")], [], investigation_options),
+        (
+            "Mail Address Lookup",
+            "table",
+            f"WITH messages AS ("
+            f"SELECT max(_timestamp) AS m_event_time, mail_filter_id AS m_filter_id, "
+            f"max(mail_message_id) AS m_message_id, max(mail_header_sender) AS m_sender, "
+            f"max(mail_header_to) AS m_recipient, max(mail_subject) AS m_subject, "
+            f"max(mail_linked_queue_id) AS m_delivery_queue_id, max(mail_rule) AS m_rule, "
+            f"max(mail_filter_action) AS m_action, max(mail_spam_score) AS m_spam_score, "
+            f"max(mail_dmarc_result) AS m_dmarc, "
+            f"coalesce(max(mail_header_sender), max(mail_sender), max(mail_envelope_sender)) AS m_sender_address, "
+            f"coalesce(max(mail_header_to), max(mail_recipient), max(mail_envelope_recipients)) AS m_recipient_address "
+            f"FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' "
+            f"AND mail_filter_id IS NOT NULL GROUP BY mail_filter_id) "
+            f"SELECT m_event_time AS event_time, 'sender' AS address_role, m_sender_address AS address, "
+            f"m_filter_id AS filter_id, m_message_id AS message_id, m_sender AS sender, "
+            f"m_recipient AS recipient, m_subject AS subject, m_delivery_queue_id AS delivery_queue_id, "
+            f"m_rule AS rule, m_action AS action, m_spam_score AS spam_score, m_dmarc AS dmarc "
+            f"FROM messages WHERE m_sender_address IS NOT NULL AND m_sender_address <> '' UNION ALL "
+            f"SELECT m_event_time AS event_time, 'recipient' AS address_role, m_recipient_address AS address, "
+            f"m_filter_id AS filter_id, m_message_id AS message_id, m_sender AS sender, "
+            f"m_recipient AS recipient, m_subject AS subject, m_delivery_queue_id AS delivery_queue_id, "
+            f"m_rule AS rule, m_action AS action, m_spam_score AS spam_score, m_dmarc AS dmarc "
+            f"FROM messages WHERE m_recipient_address IS NOT NULL AND m_recipient_address <> '' "
+            f"ORDER BY event_time DESC LIMIT 2000",
+            [
+                ("Last Event", "event_time"), ("Role", "address_role"),
+                ("Address", "address"), ("PMG Filter ID", "filter_id"),
+                ("Message-ID", "message_id"), ("Sender", "sender"),
+                ("Recipient", "recipient"), ("Subject", "subject"),
+                ("Delivery Queue ID", "delivery_queue_id"), ("Rule", "rule"),
+                ("Action", "action"), ("Spam Score", "spam_score"), ("DMARC", "dmarc"),
+            ],
+            [],
+            investigation_options,
+        ),
+        ("Filtering Timeline", "table", f"SELECT _timestamp AS event_time, mail_filter_id AS filter_id, syslog_program AS component, mail_header_sender AS sender, mail_header_to AS recipient, mail_subject AS subject, mail_rule AS rule, mail_filter_action AS action, mail_spam_score AS spam_score, mail_spf_result AS spf, mail_dkim_result AS dkim, mail_dmarc_result AS dmarc, message FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_filter_id IS NOT NULL ORDER BY _timestamp DESC LIMIT 1000", [("Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Subject", "subject"), ("Rule", "rule"), ("Action", "action"), ("Spam Score", "spam_score"), ("SPF", "spf"), ("DKIM", "dkim"), ("DMARC", "dmarc"), ("Message", "message")], [], investigation_options),
+        ("Delivery Timeline", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_dsn AS dsn, mail_status AS status, mail_delay AS delay, mail_smtp_response_code AS response_code, message FROM {s} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_queue_id IS NOT NULL ORDER BY _timestamp DESC LIMIT 1000", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Component", "component"), ("Envelope Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("DSN", "dsn"), ("Status", "status"), ("Delay", "delay"), ("Response", "response_code"), ("Message", "message")], [], investigation_options),
     ]
     tls = [
         ("TLS Connections", "metric", f"SELECT count(*) AS value FROM {s} WHERE mail_tls_protocol IS NOT NULL", [], [("Connections", "value")]),
@@ -303,25 +328,27 @@ def pmg_dashboards() -> dict[str, dict]:
         build_tab("proxmox_mail_gateway", "pmg_authentication", "Email Authentication", authentication[:6]),
         build_tab("proxmox_mail_gateway", "pmg_tls", "TLS", tls),
     ], relative_period="6h")
+    investigation_tab = build_tab(
+        "proxmox_mail_gateway", "pmg_investigation", "Message Investigation", investigation
+    )
+    # The OpenObserve browser cache is keyed by panel ID. Bump only these three
+    # IDs when changing their query semantics so existing browsers cannot
+    # restore the pre-filter result set against the revised SQL.
+    for panel in investigation_tab["panels"]:
+        panel["id"] += "_address_filter_v4"
+
     investigation_dashboard = dashboard(
         "PMG Message Investigation",
         "Address-driven PMG filtering, authentication, queue and raw-event investigation.",
         [
-        build_tab("proxmox_mail_gateway", "pmg_investigation", "Message Investigation", investigation),
-        build_tab("proxmox_mail_gateway", "pmg_recent", "Recent Mail", overview[9:]),
-        build_tab("proxmox_mail_gateway", "pmg_auth_detail", "Authentication Detail", authentication[6:]),
-        build_tab("proxmox_mail_gateway", "pmg_filter_detail", "Spam / Virus Detail", filtering[8:9]),
-        build_tab("proxmox_mail_gateway", "pmg_delivery_detail", "Rejected / Deferred", filtering[9:]),
-        build_tab("proxmox_mail_gateway", "pmg_trace", "Queue Trace", trace[:1]),
-        build_tab("proxmox_mail_gateway", "pmg_raw", "Raw Events", trace[1:]),
-        ], extra_variables=[
-        {"type": "textbox", "name": "sender", "label": "Sender email", "value": "_o2_all_",
-         "options": [], "multiSelect": False, "hideOnDashboard": False,
-         "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
-        {"type": "textbox", "name": "recipient", "label": "Recipient email", "value": "_o2_all_",
-         "options": [], "multiSelect": False, "hideOnDashboard": False,
-         "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
-        ], relative_period="6h")
+        investigation_tab,
+        build_tab("proxmox_mail_gateway", "pmg_recent", "Recent Mail", overview[9:], dashboard_filter=False),
+        build_tab("proxmox_mail_gateway", "pmg_auth_detail", "Authentication Detail", authentication[6:], dashboard_filter=False),
+        build_tab("proxmox_mail_gateway", "pmg_filter_detail", "Spam / Virus Detail", filtering[8:9], dashboard_filter=False),
+        build_tab("proxmox_mail_gateway", "pmg_delivery_detail", "Rejected / Deferred", filtering[9:], dashboard_filter=False),
+        build_tab("proxmox_mail_gateway", "pmg_trace", "Queue Trace", trace[:1], dashboard_filter=False),
+        build_tab("proxmox_mail_gateway", "pmg_raw", "Raw Events", trace[1:], dashboard_filter=False),
+        ], stream=None, relative_period="6h")
     return {"pmg-reporting": reporting, "pmg-investigation": investigation_dashboard}
 
 
@@ -447,13 +474,13 @@ def fortigate_investigation_dashboard() -> dict:
     """Filter-driven FortiGate session, NAT, policy, UTM and raw-event tracing."""
     s = '"fortigate"'
     match = " AND ".join([
-        "('$src_ip' = '_o2_all_' OR coalesce(fortigate_srcip,'') = '$src_ip' OR coalesce(fortigate_transip,'') = '$src_ip')",
-        "('$dst_ip' = '_o2_all_' OR coalesce(fortigate_dstip,'') = '$dst_ip' OR coalesce(fortigate_transip,'') = '$dst_ip')",
-        "('$fg_user' = '_o2_all_' OR lower(coalesce(fortigate_user,'')) = lower('$fg_user'))",
-        "('$session_id' = '_o2_all_' OR coalesce(fortigate_sessionid,'') = '$session_id')",
-        "('$policy' = '_o2_all_' OR coalesce(fortigate_policyid,'') = '$policy' OR lower(coalesce(fortigate_policyname,'')) LIKE concat('%', lower('$policy'), '%'))",
-        "('$vdom' = '_o2_all_' OR lower(coalesce(fortigate_vd,'')) = lower('$vdom'))",
-        "('$search_text' = '_o2_all_' OR lower(coalesce(fortigate_app,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_appcat,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_attack,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_hostname,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_url,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(fortigate_msg,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(message,'')) LIKE concat('%', lower('$search_text'), '%') OR lower(coalesce(raw_message,'')) LIKE concat('%', lower('$search_text'), '%'))",
+        "('{{src_ip}}' = '_o2_all_' OR coalesce(fortigate_srcip,'') = '{{src_ip}}' OR coalesce(fortigate_transip,'') = '{{src_ip}}')",
+        "('{{dst_ip}}' = '_o2_all_' OR coalesce(fortigate_dstip,'') = '{{dst_ip}}' OR coalesce(fortigate_transip,'') = '{{dst_ip}}')",
+        "('{{fg_user}}' = '_o2_all_' OR lower(coalesce(fortigate_user,'')) = lower('{{fg_user}}'))",
+        "('{{session_id}}' = '_o2_all_' OR coalesce(fortigate_sessionid,'') = '{{session_id}}')",
+        "('{{policy}}' = '_o2_all_' OR coalesce(fortigate_policyid,'') = '{{policy}}' OR lower(coalesce(fortigate_policyname,'')) LIKE concat('%', lower('{{policy}}'), '%'))",
+        "('{{vdom}}' = '_o2_all_' OR lower(coalesce(fortigate_vd,'')) = lower('{{vdom}}'))",
+        "('{{search_text}}' = '_o2_all_' OR lower(coalesce(fortigate_app,'')) LIKE concat('%', lower('{{search_text}}'), '%') OR lower(coalesce(fortigate_appcat,'')) LIKE concat('%', lower('{{search_text}}'), '%') OR lower(coalesce(fortigate_attack,'')) LIKE concat('%', lower('{{search_text}}'), '%') OR lower(coalesce(fortigate_hostname,'')) LIKE concat('%', lower('{{search_text}}'), '%') OR lower(coalesce(fortigate_url,'')) LIKE concat('%', lower('{{search_text}}'), '%') OR lower(coalesce(fortigate_msg,'')) LIKE concat('%', lower('{{search_text}}'), '%') OR lower(coalesce(message,'')) LIKE concat('%', lower('{{search_text}}'), '%') OR lower(coalesce(raw_message,'')) LIKE concat('%', lower('{{search_text}}'), '%'))",
     ])
     summary = [
         ("Matching Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE {match}", [], [("Events", "value")]),
@@ -700,8 +727,8 @@ def ubersmith_mail_dashboard() -> dict:
         ("Relay Destinations", "table", f"SELECT mail_relay AS relay, count(*) AS value FROM {u} WHERE mail_relay IS NOT NULL GROUP BY mail_relay ORDER BY value DESC LIMIT 100", [("Relay", "relay")], [("Deliveries", "value")]),
         ("Slowest Ubersmith Mail Deliveries", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, mail_recipient AS recipient, mail_relay AS relay, mail_delay AS delay, mail_delays AS stages, mail_dsn AS dsn, mail_status AS status, message FROM {u} WHERE mail_delay IS NOT NULL ORDER BY try_cast(mail_delay AS DOUBLE) DESC LIMIT 100", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Recipient", "recipient"), ("Relay", "relay"), ("Delay", "delay"), ("Stages", "stages"), ("DSN", "dsn"), ("Status", "status"), ("Message", "message")], []),
     ]
-    sender_match = "('$sender' = '_o2_all_' OR lower(coalesce(mail_header_sender,'')) = lower('$sender') OR lower(coalesce(mail_envelope_sender,'')) = lower('$sender') OR lower(coalesce(mail_sender,'')) = lower('$sender'))"
-    recipient_match = "('$recipient' = '_o2_all_' OR lower(coalesce(mail_envelope_recipients,'')) = lower('$recipient') OR lower(coalesce(mail_recipient,'')) = lower('$recipient') OR lower(coalesce(mail_header_to,'')) LIKE concat('%', lower('$recipient'), '%'))"
+    sender_match = "('{{sender}}' = '_o2_all_' OR lower(coalesce(mail_header_sender,'')) = lower('{{sender}}') OR lower(coalesce(mail_envelope_sender,'')) = lower('{{sender}}') OR lower(coalesce(mail_sender,'')) = lower('{{sender}}'))"
+    recipient_match = "('{{recipient}}' = '_o2_all_' OR lower(coalesce(mail_envelope_recipients,'')) = lower('{{recipient}}') OR lower(coalesce(mail_recipient,'')) = lower('{{recipient}}') OR lower(coalesce(mail_header_to,'')) LIKE concat('%', lower('{{recipient}}'), '%'))"
     matching_filters = (
         f"WITH matching_filters AS (SELECT DISTINCT mail_filter_id FROM {p} "
         "WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_filter_id IS NOT NULL "
@@ -894,7 +921,10 @@ def dashboard(title: str, description: str, tabs: list[dict], *, stream: str | N
     if relative_period is None:
         relative_period = "6h"
     return {
-        "version": 5,
+        # Schema v8 is required for current table features such as the
+        # supported per-column filtering control. Older schemas silently drop
+        # those settings when OpenObserve persists the dashboard.
+        "version": 8,
         "dashboardId": "",
         "title": title,
         "description": description,
@@ -1125,7 +1155,10 @@ def validate_queries(base: str, org: str, user: str, password: str,
                     replacement = ("'192.0.2.254'" if variable["name"] == "source"
                                    else "'dashboard-validation'" if variable["type"] == "query_values"
                                    else "_o2_all_")
-                    sql = sql.replace(f"${variable['name']}", replacement)
+                    name = variable["name"]
+                    sql = sql.replace(f"${name}", replacement)
+                    sql = sql.replace(f"${{{name}}}", replacement)
+                    sql = sql.replace(f"{{{{{name}}}}}", replacement)
                 request = {
                     "query": {
                         "sql": sql,

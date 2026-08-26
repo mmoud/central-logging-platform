@@ -19,7 +19,7 @@ SPEC.loader.exec_module(MODULE)
 def validate_dashboard(body: dict, expected_panels: int, period: str,
                        variable: str | None = "device",
                        extra_variables: tuple[str, ...] = ()) -> None:
-    assert body["version"] == 5
+    assert body["version"] == 8
     assert body["defaultDatetimeDuration"] == {"type": "relative", "relativeTimePeriod": period}
     variables = body["variables"]["list"]
     if variable:
@@ -41,7 +41,7 @@ def validate_dashboard(body: dict, expected_panels: int, period: str,
     assert len({panel["id"] for panel in panels}) == len(panels)
     all_queries = "\n".join(panel["queries"][0]["query"] for panel in panels)
     for extra in extra_variables:
-        assert f"${extra}" in all_queries
+        assert f"${extra}" in all_queries or f"{{{{{extra}}}}}" in all_queries
 
     for panel in panels:
         assert panel["type"] in {"metric", "line", "bar", "h-bar", "donut", "table"}
@@ -63,7 +63,7 @@ def validate_dashboard(body: dict, expected_panels: int, period: str,
         if panel["type"] == "table":
             assert len(fields["x"]) == 1
             assert fields["y"]
-            assert all(item["aggregationFunction"] is None for item in fields["y"])
+            assert all(item["functionName"] is None for item in fields["y"])
         if panel["type"] == "h-bar":
             assert panel["layout"]["h"] == 12
 
@@ -86,7 +86,7 @@ def validate_visualization_choices(dashboards: list[dict]) -> None:
     identity_tables = {
         "Real Sender Addresses", "Envelope Senders / Return-Path", "Header Recipients",
         "Envelope Recipients", "Relay Destinations", "Reject Reasons", "TLS Ciphers",
-        "Matching Messages", "PMG to Ubersmith Message Correlation",
+        "Mail Address Lookup", "PMG to Ubersmith Message Correlation",
     }
     assert all(by_title[title] == "h-bar" for title in horizontal_rankings)
     assert all(by_title[title] == "table" for title in identity_tables)
@@ -160,8 +160,21 @@ def validate_ubersmith_bootstrap() -> None:
 def main() -> int:
     pmg = MODULE.pmg_dashboards()
     validate_dashboard(pmg["pmg-reporting"], 40, "6h")
-    validate_dashboard(pmg["pmg-investigation"], 9, "6h",
-                       extra_variables=("sender", "recipient"))
+    validate_dashboard(pmg["pmg-investigation"], 9, "6h", variable=None)
+    investigation_sql = "\n".join(
+        panel["queries"][0]["query"]
+        for panel in pmg["pmg-investigation"]["tabs"][0]["panels"]
+    )
+    assert "$device" not in investigation_sql
+    first_panel_fields = pmg["pmg-investigation"]["tabs"][0]["panels"][0]["queries"][0]["fields"]
+    assert any(
+        field["column"] == "address"
+        for field in first_panel_fields["x"] + first_panel_fields["y"]
+    )
+    assert all(
+        panel["config"]["table_filtering"] is True
+        for panel in pmg["pmg-investigation"]["tabs"][0]["panels"]
+    )
     validate_bootstrap_exclusion(pmg["pmg-reporting"])
     validate_bootstrap_exclusion(pmg["pmg-investigation"])
     validate_pmg_bootstrap()

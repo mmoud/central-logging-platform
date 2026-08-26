@@ -253,7 +253,13 @@ def provision_reports(base: str, org: str, user: str, password: str) -> None:
         item = by_title.get(dashboard_title)
         if not item:
             raise RuntimeError(f"report dashboard not found: {dashboard_title}")
-        dashboard_body = item.get("v5") or {}
+        dashboard_body = (
+            item.get("v8")
+            or item.get("v7")
+            or item.get("v6")
+            or item.get("v5")
+            or {}
+        )
         body = {
             "name": name, "orgId": org, "folderId": folder_id, "enabled": True,
             "dashboards": [{

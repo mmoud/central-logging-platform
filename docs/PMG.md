@@ -140,18 +140,24 @@ labelled and reported separately. Address, relay, source-IP, rule, and rejection
 rankings are tables so long identifiers remain readable; compact categorical
 summaries remain charts.
 
-For a mail investigation, open **PMG Message Investigation → Message
-Investigation**, enter a complete address in **Sender email**, **Recipient
-email**, or both, and click the dashboard Refresh button. `_o2_all_` means no
-restriction. **Matching Messages** shows one row per PMG filter ID, **Filtering
-Timeline** shows header parsing, authentication, rule, and quarantine/accept
-activity, and **Delivery Timeline** follows the linked Postfix queue ID through
-relay status, DSN, delay, and SMTP response. A quarantined or blocked message
-legitimately has no delivery queue. The lookup checks visible/header and
-SMTP-envelope identities, which is required for Microsoft 365 SRS forwarding.
-It also covers PMG rules/actions, delivery outcomes, domains, relays, source IPs,
-size, delay, DSN, SMTP response, spam, malware, rejects, deferrals, and queue-ID
-investigation. Separate **Email Authentication** and **Authentication Detail**
-tabs report SPF, DKIM validity/alignment, DMARC policy failures, ARC results,
-and the exact SpamAssassin authentication tests. Keeping each tab small also
-prevents duplicate lazy-loaded query results in current OpenObserve.
+For address investigations, open **PMG Message Investigation → Message
+Investigation** and click the funnel icon on the **Address** column of **Mail
+Address Lookup**. Type the complete sender or recipient address in **Search**,
+then tick the matching address. The **Role** column says whether each row matched
+the sender or recipient identity. This client-side filter updates immediately
+and does not require the dashboard refresh button; **No matches** is a factual
+zero-result response for the selected time range rather than stale table data.
+
+**Filtering Timeline** shows header parsing, authentication, rule, and
+quarantine/accept activity. **Delivery Timeline** follows Postfix queue IDs
+through relay status, DSN, delay, and SMTP response. A quarantined or blocked
+message legitimately has no delivery queue. The lookup checks the best
+available visible/header identity first, then falls back to Postfix or SMTP
+envelope fields, which matters for Microsoft 365 SRS forwarding. Separate
+**Email Authentication** and **Authentication Detail** tabs report SPF, DKIM
+validity/alignment, DMARC policy failures, ARC results, and the exact
+SpamAssassin authentication tests.
+
+Copy the resulting PMG Filter ID or Delivery Queue ID into the corresponding
+column filter on **Filtering Timeline** or **Delivery Timeline** to follow the
+message through PMG and Postfix. Clear a column's filter to return to all rows.

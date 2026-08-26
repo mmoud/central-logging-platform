@@ -14,6 +14,12 @@ services:
       ZO_WEB_URL: ${ZO_WEB_URL:-http://localhost:5080}
       ZO_REPORT_SERVER_URL: ${ZO_REPORT_SERVER_URL:-http://report-server:5090}
       ZO_STREAMING_ENABLED: ${ZO_STREAMING_ENABLED:-true}
+      # Dashboard textbox variables are part of interactive investigations.
+      # OpenObserve's result cache can reuse a response across different
+      # substituted textbox values, which makes address searches appear
+      # unfiltered. Prefer correctness over cached dashboard responses on this
+      # small single-node deployment.
+      ZO_RESULT_CACHE_ENABLED: ${ZO_RESULT_CACHE_ENABLED:-false}
       ZO_TELEMETRY: "false"
       ZO_HEALTH_CHECK_ENABLED: "true"
     ports:
