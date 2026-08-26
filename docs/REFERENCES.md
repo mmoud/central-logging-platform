@@ -1,6 +1,6 @@
 # Upstream references
 
-Verified 2026-08-25. Prefer these upstream sources when changing the package.
+Verified 2026-08-26. Prefer these upstream sources when changing the package.
 
 - [OpenObserve releases and production container registry](https://openobserve.ai/docs/releases/)
 - [OpenObserve Docker/self-hosted deployment](https://openobserve.ai/docs/getting-started/)
@@ -31,5 +31,10 @@ Verified 2026-08-25. Prefer these upstream sources when changing the package.
 - [FortiAnalyzer 7.6 log forwarding](https://docs.fortinet.com/document/fortianalyzer/7.6.3/administration-guide/621804/log-forwarding)
 - [Cisco IOS-XE logging data model/examples](https://netascode.cisco.com/docs/data_models/iosxe/device/logging/)
 - [Junos syslog transport reference](https://www.juniper.net/documentation/us/en/software/junos/network-mgmt/topics/ref/statement/system-syslog-host-transport.html)
+- [Junos system logging on a single-chassis system](https://www.juniper.net/documentation/us/en/software/junos/network-mgmt/topics/topic-map/system-logging-on-a-single-chassis-system.html)
+- [Junos syslog over TLS](https://www.juniper.net/documentation/us/en/software/junos/network-mgmt/topics/topic-map/syslog-over-tls.html)
+- [Junos syslog source-address reference](https://www.juniper.net/documentation/us/en/software/junos/cli-reference/topics/ref/statement/security-source-address-edit-system-ntp-radius-syslog-tacacs.html)
+- [Proxmox VE administration guide](https://pve.proxmox.com/pve-docs/pve-admin-guide.pdf)
+- [Proxmox VE pvedaemon reference](https://pve.proxmox.com/pve-docs/pvedaemon.8.html)
 
 OpenObserve supports the OSS `_json` and `_multi` APIs. This package uses `_multi` because syslog-ng HTTP batching produces newline-delimited JSON safely and efficiently. `ZO_COMPACT_DATA_RETENTION_DAYS=30` is the documented global setting. The supplied images are digest-pinned in `.env.example`; `scripts/update.sh --check` resolves official stable channels and `--apply` records a fresh immutable digest before deployment.

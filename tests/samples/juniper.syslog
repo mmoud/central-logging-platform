@@ -1,1 +1,5 @@
-<190>Aug 25 14:22:11 srx01 sshd[1234]: Accepted password for netops from 10.0.0.20 port 50122 ssh2
+<190>Aug 25 14:22:11 mx01 rpd[4321]: RPD_BGP_NEIGHBOR_STATE_CHANGED: BGP peer 192.0.2.2 (External AS 64501) changed state from Established to Idle
+<189>Aug 25 14:22:12 mx01 mib2d[4322]: SNMP_TRAP_LINK_DOWN: ifIndex 518, interface xe-0/0/1.0, admin status up, operational status down
+<190>Aug 25 14:22:13 mx01 mgd[4323]: UI_COMMIT_COMPLETED: User netops committed configuration
+<190>Aug 25 14:22:14 mx01 sshd[4324]: Accepted publickey for netops from 198.51.100.20 port 50122 ssh2
+<188>Aug 25 14:22:15 srx01 RT_FLOW: RT_FLOW_SESSION_CREATE: session created source-address=10.0.0.10 source-port=51514 destination-address=203.0.113.20 destination-port=443 protocol=tcp policy-name=users-web source-zone-name=trust destination-zone-name=untrust session-id=123456

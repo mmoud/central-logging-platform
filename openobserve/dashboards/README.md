@@ -1,7 +1,7 @@
 # Bundled dashboards
 
 `scripts/provision-dashboards.py` contains the version-controlled definitions
-for the PMG and FortiGate dashboards and creates or updates them through
+for the PMG, FortiGate, Juniper, and Proxmox VE dashboards and creates or updates them through
 OpenObserve's supported dashboard API.
 
 Run `sudo ./scripts/provision-dashboards.py` from the installed platform
@@ -20,6 +20,27 @@ The FortiGate definition includes 70 panels covering traffic, VDOMs, VPN,
 administration, HA, routing, application control, IPS, web/DNS filtering,
 antivirus/file filtering, DLP, email filtering, SSL, WAF, CASB, anomalies and
 virtual-patch events. FortiOS fields not used by a panel remain searchable.
+
+**Juniper Router Operations** is a separate 30-panel dashboard for Junos
+interfaces, routing protocols/peers, authentication, configuration changes,
+and optional SRX policy/session logs. **Proxmox VE Operations** is a separate
+32-panel dashboard for nodes, services, authentication, VMs/containers, UPID
+tasks, HA, corosync/quorum, and failures. Provision either independently with
+`--only juniper` or `--only proxmox-ve`; this does not update the other
+dashboard definitions.
+
+Before a future source sends its first log, OpenObserve has no stream/schema and
+cannot execute dashboard SQL. To validate a pre-staged Juniper or PVE dashboard,
+bootstrap only that schema:
+
+```bash
+./scripts/provision-dashboards.py --only juniper --bootstrap-schema
+./scripts/provision-dashboards.py --only proxmox-ve --bootstrap-schema
+```
+
+Each command ingests one `schema_bootstrap=true` record. All bundled Juniper
+and PVE panel SQL explicitly excludes that marker, and normal retention removes
+it later; no live-source event is fabricated or counted.
 
 Panels are intentionally distributed across focused tabs. Current OpenObserve
 can execute a large tab's below-the-fold panels twice as they enter the viewport;

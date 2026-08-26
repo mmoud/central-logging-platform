@@ -81,6 +81,24 @@ def route_conf(devices: list[dict[str, str]]) -> str:
         parsers = ""
         if dev["stream"] == "fortigate":
             parsers = "parser(p_fortigate_payload); parser(p_fortigate_kv); rewrite(r_fortigate_normalized); "
+        elif dev["stream"] == "juniper":
+            parsers = (
+                "parser(p_juniper_event); parser(p_juniper_interface); "
+                "parser(p_juniper_routing_instance); parser(p_juniper_peer); "
+                "parser(p_juniper_user); parser(p_juniper_source_address); "
+                "parser(p_juniper_destination_address); parser(p_juniper_source_port); "
+                "parser(p_juniper_destination_port); parser(p_juniper_policy); "
+                "parser(p_juniper_source_zone); parser(p_juniper_destination_zone); "
+                "parser(p_juniper_protocol); parser(p_juniper_session); "
+                "rewrite(r_juniper_normalized); "
+            )
+        elif dev["stream"] == "proxmox_ve":
+            parsers = (
+                "parser(p_proxmox_auth); parser(p_proxmox_user); "
+                "parser(p_proxmox_source); parser(p_proxmox_upid); "
+                "parser(p_proxmox_upid_fields); parser(p_proxmox_guest); "
+                "rewrite(r_proxmox_normalized); "
+            )
         elif dev["stream"] == "proxmox_mail_gateway":
             parsers = (
                 "parser(p_mail_queue_id); parser(p_mail_sender); parser(p_mail_recipient); "

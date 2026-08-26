@@ -55,7 +55,7 @@ editor config/sources.yml
 
 The mapping—not fragile content guessing—selects `fortigate`, `cisco`, `juniper`, `proxmox_ve`, `proxmox_mail_gateway`, or `linux`. Unmapped source IPs always go to `unclassified`. The current syslog source natively accepts RFC3164 and RFC5424. Every record includes `raw_message`, `source.ip`, syslog fields, timestamps, normalized observer/device fields, and stream. FortiGate key/value fields are parsed from the preserved frame and kept as `fortigate.*`; no parser failure discards a message.
 
-The parsers deliberately remain conservative. Every FortiGate key/value field is retained, including application control, IPS, antivirus, web/DNS filter, DLP, SSL, WAF and related UTM fields, while parser non-matches remain valid events. PMG records retain queue IDs for query-time correlation rather than fabricating cross-event mail joins. Cisco and Junos event identifiers and standard Linux program/PID remain searchable in normalized syslog fields and the raw record.
+The parsers deliberately remain conservative. Every FortiGate key/value field is retained, including application control, IPS, antivirus, web/DNS filter, DLP, SSL, WAF and related UTM fields, while parser non-matches remain valid events. PMG records retain queue IDs for query-time correlation rather than fabricating cross-event mail joins. Junos enrichment covers event mnemonics, interfaces, peers/VRFs, users and common SRX flow fields. Proxmox VE enrichment covers authentication, task UPIDs, VM/CT IDs and node/task/user segments while retaining ordinary Debian service records.
 
 ## Operations
 
@@ -65,12 +65,18 @@ The parsers deliberately remain conservative. Every FortiGate key/value field is
 ./scripts/test-ingestion.sh fortigate
 ./scripts/test-syslog.sh [collector-host]
 ./scripts/test-buffering.sh
+./tests/test-vendor-parsers.sh
 ./scripts/provision-dashboards.py
 ./scripts/backup.sh [/safe/path/backup.tar.gz]
 sudo ./scripts/update.sh --check
 ```
 
 `validate.sh` checks source mappings, TLS assets, environment permissions/data paths, Compose syntax and syslog-ng syntax before restart. `test-buffering.sh` stops only this project's OpenObserve service, injects logs, checks a persistent queue file, restores OpenObserve, and waits for health; it never deletes stored logs. Backup captures configuration and local metadata when available, **not** raw stream data/WAL or queued messages. Restore stops this project, asks for literal confirmation, overlays the archive, validates, and restarts.
+
+`tests/test-vendor-parsers.sh` runs the Juniper and Proxmox sample corpus through
+the pinned syslog-ng image and asserts the important extracted fields. Set
+`RUN_VENDOR_PARSER_TESTS=true` when running `validate.sh` to include it in the
+full validation pass.
 
 For a controlled upgrade, run `sudo ./scripts/update.sh --check` to resolve official stable channels into candidate immutable digests, review release notes, then run `sudo ./scripts/update.sh --apply`. It saves a protected timestamped `.env` backup, validates configuration, updates this Compose project, and waits for health. Add `--docker-engine` only when you explicitly want Docker packages updated from Docker’s official apt repository. There is no Watchtower or automatic update mechanism.
 
@@ -90,7 +96,7 @@ For production, replace `syslog-ng/tls/server.key`, `server.crt`, and the trust 
 
 Reports are available through the upstream Report Server image, but disabled by default so absent SMTP cannot impede collection. Set `COMPOSE_PROFILES=reports`, populate SMTP variables in `.env`, then run `docker compose up -d`. It stays internal to the Compose network. OpenObserve OSS dashboards, search and alerts are available; this package does not install the Enterprise edition.
 
-Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **PMG Mail Reporting** and **FortiGate Security & Traffic** dashboards through OpenObserve's supported API. The FortiGate dashboard includes dedicated UTM, application-control, IPS, web/DNS filtering and content-security tabs. The version-controlled definitions are documented under `openobserve/dashboards/`. Useful additional saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Never manipulate OpenObserve SQLite directly.
+Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **PMG Mail Reporting**, **FortiGate Security & Traffic**, **Juniper Router Operations**, and **Proxmox VE Operations** dashboards through OpenObserve's supported API. Juniper and Proxmox VE are isolated dashboard objects and streams; `--only juniper` or `--only proxmox-ve` provisions one without updating the others. The version-controlled definitions are documented under `openobserve/dashboards/`. Useful additional saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Never manipulate OpenObserve SQLite directly.
 
 ## Source guidance and limits
 

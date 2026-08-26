@@ -1,1 +1,6 @@
 <30>Aug 25 14:22:11 pve01 pvedaemon[1234]: authentication failure; rhost=10.0.0.20 user=root@pam msg=Authentication failure
+<30>Aug 25 14:22:12 pve01 pvedaemon[1235]: starting task UPID:pve01:00001234:00005678:66CCAA11:qmstart:101:admin@pam:
+<30>Aug 25 14:22:13 pve01 pvedaemon[1235]: end task UPID:pve01:00001234:00005678:66CCAA11:qmstart:101:admin@pam: OK
+<29>Aug 25 14:22:14 pve01 pve-ha-lrm[1236]: status change wait_for_agent_lock => active
+<28>Aug 25 14:22:15 pve01 corosync[1237]: [QUORUM] Members[2]: 1 2
+<27>Aug 25 14:22:16 pve01 systemd[1]: pvestatd.service: Failed with result 'exit-code'

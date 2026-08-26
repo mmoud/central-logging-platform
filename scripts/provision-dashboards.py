@@ -72,6 +72,24 @@ def make_panel(
     description: str = "",
     unit: str | None = None,
 ) -> dict:
+    # Pre-staged source schemas may contain one explicit bootstrap marker.
+    # Exclude it from every Juniper/PVE query so validation never changes the
+    # operational totals shown after real devices begin sending logs.
+    if stream in {"juniper", "proxmox_ve"}:
+        marker = "coalesce(schema_bootstrap,'false') <> 'true'"
+        where_match = re.search(r"(?i)\bWHERE\b", query)
+        boundary_pattern = re.compile(r"(?i)\b(GROUP BY|ORDER BY|LIMIT)\b")
+        if where_match:
+            boundary = boundary_pattern.search(query, where_match.end())
+            end = boundary.start() if boundary else len(query)
+            condition = query[where_match.end():end].strip()
+            query = (query[:where_match.start()] + f"WHERE {marker} AND ({condition}) " +
+                     query[end:])
+        else:
+            boundary = boundary_pattern.search(query)
+            end = boundary.start() if boundary else len(query)
+            query = query[:end].rstrip() + f" WHERE {marker} " + query[end:]
+
     # Dashboard schema v5's frontend is most reliable when custom SQL output
     # columns use its canonical x_axis_N/y_axis_N names. Keep friendly labels
     # in the axis metadata while rewriting only SQL alias declarations and
@@ -328,6 +346,124 @@ def fortigate_dashboard() -> dict:
     ])
 
 
+def juniper_dashboard() -> dict:
+    """Operational reporting for Junos routers and optional SRX security logs."""
+    s = '"juniper"'
+    overview = [
+        ("Total Events", "metric", f"SELECT count(*) AS value FROM {s}", [], [("Events", "value")]),
+        ("Critical / Error", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error')", [], [("Events", "value")]),
+        ("Interface Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE juniper_interface IS NOT NULL OR upper(coalesce(juniper_event,'')) LIKE '%IF%' OR lower(message) LIKE '%interface%'", [], [("Events", "value")]),
+        ("Routing Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(message) LIKE '%bgp%' OR lower(message) LIKE '%ospf%' OR lower(message) LIKE '%route%' OR lower(message) LIKE '%rpd%'", [], [("Events", "value")]),
+        ("Authentication Failures", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(message) LIKE '%failed%' OR lower(message) LIKE '%authentication failure%' OR lower(message) LIKE '%login failure%'", [], [("Failures", "value")]),
+        ("Active Devices", "metric", f"SELECT count(DISTINCT device_name) AS value FROM {s} WHERE device_name IS NOT NULL", [], [("Devices", "value")]),
+    ]
+    trends = [
+        ("Events Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Severity Distribution", "donut", f"SELECT coalesce(syslog_severity,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC", [("Severity", "label")], [("Events", "value")]),
+        ("Top Processes", "bar", f"SELECT coalesce(syslog_program,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 20", [("Process", "label")], [("Events", "value")]),
+        ("Events by Device", "bar", f"SELECT coalesce(device_name,host_name,source_ip,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 20", [("Device", "label")], [("Events", "value")]),
+    ]
+    interfaces = [
+        ("Top Interfaces", "bar", f"SELECT juniper_interface AS label, count(*) AS value FROM {s} WHERE juniper_interface IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("Interface", "label")], [("Events", "value")]),
+        ("Interface Events Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE juniper_interface IS NOT NULL OR lower(message) LIKE '%interface%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Link Down / Failure", "metric", f"SELECT count(*) AS value FROM {s} WHERE (juniper_interface IS NOT NULL OR lower(message) LIKE '%interface%') AND (lower(message) LIKE '%down%' OR lower(message) LIKE '%fail%')", [], [("Events", "value")]),
+        ("Link Up / Recovery", "metric", f"SELECT count(*) AS value FROM {s} WHERE (juniper_interface IS NOT NULL OR lower(message) LIKE '%interface%') AND (lower(message) LIKE '% up%' OR lower(message) LIKE '%recovered%')", [], [("Events", "value")]),
+        ("Interface Event Detail", "table", f"SELECT _timestamp AS event_time, device_name, juniper_interface AS interface, juniper_event AS event, syslog_severity AS severity, syslog_program AS process, message, raw_message FROM {s} WHERE juniper_interface IS NOT NULL OR lower(message) LIKE '%interface%' ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Device", "device_name"), ("Interface", "interface"), ("Event", "event"), ("Severity", "severity"), ("Process", "process"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    routing = [
+        ("Routing Protocol Events", "bar", f"SELECT CASE WHEN lower(message) LIKE '%bgp%' THEN 'BGP' WHEN lower(message) LIKE '%ospf%' THEN 'OSPF' WHEN lower(message) LIKE '%isis%' THEN 'IS-IS' WHEN lower(message) LIKE '%rsvp%' THEN 'RSVP' WHEN lower(message) LIKE '%ldp%' THEN 'LDP' ELSE 'Other' END AS label, count(*) AS value FROM {s} WHERE lower(message) LIKE '%bgp%' OR lower(message) LIKE '%ospf%' OR lower(message) LIKE '%isis%' OR lower(message) LIKE '%rsvp%' OR lower(message) LIKE '%ldp%' OR lower(message) LIKE '%route%' GROUP BY label ORDER BY value DESC", [("Protocol", "label")], [("Events", "value")]),
+        ("Neighbor / Peer Events", "bar", f"SELECT juniper_peer_ip AS label, count(*) AS value FROM {s} WHERE juniper_peer_ip IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("Peer", "label")], [("Events", "value")]),
+        ("Routing Instances", "bar", f"SELECT juniper_routing_instance AS label, count(*) AS value FROM {s} WHERE juniper_routing_instance IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("Instance / VRF", "label")], [("Events", "value")]),
+        ("Adjacency Down / Routing Failures", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE (lower(message) LIKE '%bgp%' OR lower(message) LIKE '%ospf%' OR lower(message) LIKE '%neighbor%' OR lower(message) LIKE '%peer%') AND (lower(message) LIKE '%down%' OR lower(message) LIKE '%fail%' OR lower(message) LIKE '%closed%') GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Failures", "value")]),
+        ("Routing Event Detail", "table", f"SELECT _timestamp AS event_time, device_name, juniper_event AS event, juniper_peer_ip AS peer, juniper_routing_instance AS routing_instance, syslog_severity AS severity, syslog_program AS process, message, raw_message FROM {s} WHERE lower(message) LIKE '%bgp%' OR lower(message) LIKE '%ospf%' OR lower(message) LIKE '%isis%' OR lower(message) LIKE '%route%' OR juniper_peer_ip IS NOT NULL ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Device", "device_name"), ("Event", "event"), ("Peer", "peer"), ("Instance", "routing_instance"), ("Severity", "severity"), ("Process", "process"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    access = [
+        ("Authentication Outcomes", "donut", f"SELECT CASE WHEN lower(message) LIKE '%accepted%' OR lower(message) LIKE '%success%' THEN 'success' WHEN lower(message) LIKE '%failed%' OR lower(message) LIKE '%failure%' OR lower(message) LIKE '%denied%' THEN 'failure' ELSE 'other' END AS label, count(*) AS value FROM {s} WHERE lower(syslog_program) IN ('sshd','login','mgd') OR lower(message) LIKE '%login%' OR lower(message) LIKE '%authentication%' GROUP BY label ORDER BY value DESC", [("Outcome", "label")], [("Events", "value")]),
+        ("Top Administrative Users", "bar", f"SELECT juniper_username AS label, count(*) AS value FROM {s} WHERE juniper_username IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("User", "label")], [("Events", "value")]),
+        ("Configuration / Commit Events", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(message) LIKE '%commit%' OR lower(message) LIKE '%configuration%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Authentication & Change Detail", "table", f"SELECT _timestamp AS event_time, device_name, juniper_username AS user_name, juniper_event AS event, syslog_severity AS severity, syslog_program AS process, message, raw_message FROM {s} WHERE juniper_username IS NOT NULL OR lower(message) LIKE '%login%' OR lower(message) LIKE '%authentication%' OR lower(message) LIKE '%commit%' OR lower(message) LIKE '%configuration%' ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Device", "device_name"), ("User", "user_name"), ("Event", "event"), ("Severity", "severity"), ("Process", "process"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    security = [
+        ("SRX Security Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE juniper_source_address IS NOT NULL OR juniper_destination_address IS NOT NULL OR lower(message) LIKE '%rt_flow%'", [], [("Events", "value")]),
+        ("Top SRX Policies", "bar", f"SELECT juniper_policy AS label, count(*) AS value FROM {s} WHERE juniper_policy IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("Policy", "label")], [("Events", "value")]),
+        ("Source to Destination Zones", "bar", f"SELECT concat(coalesce(juniper_source_zone,'unknown'),' -> ',coalesce(juniper_destination_zone,'unknown')) AS label, count(*) AS value FROM {s} WHERE juniper_source_zone IS NOT NULL OR juniper_destination_zone IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("Zone Flow", "label")], [("Events", "value")]),
+        ("SRX Session Detail", "table", f"SELECT _timestamp AS event_time, device_name, juniper_event AS event, juniper_source_address AS source_ip, juniper_source_port AS source_port, juniper_destination_address AS destination_ip, juniper_destination_port AS destination_port, juniper_protocol AS protocol, juniper_policy AS policy, juniper_source_zone AS source_zone, juniper_destination_zone AS destination_zone, juniper_session_id AS session_id, message FROM {s} WHERE juniper_source_address IS NOT NULL OR juniper_destination_address IS NOT NULL OR lower(message) LIKE '%rt_flow%' ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Device", "device_name"), ("Event", "event"), ("Source", "source_ip"), ("Src Port", "source_port"), ("Destination", "destination_ip"), ("Dst Port", "destination_port"), ("Protocol", "protocol"), ("Policy", "policy"), ("Source Zone", "source_zone"), ("Destination Zone", "destination_zone"), ("Session", "session_id"), ("Message", "message")], []),
+    ]
+    raw = [
+        ("Recent Juniper Events", "table", f"SELECT _timestamp AS event_time, received_at, device_name, host_name AS host, source_ip AS collector_source_ip, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS process, juniper_event AS event, message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Received", "received_at"), ("Device", "device_name"), ("Host", "host"), ("Sender IP", "collector_source_ip"), ("Facility", "facility"), ("Severity", "severity"), ("Process", "process"), ("Event", "event"), ("Message", "message")], []),
+        ("Raw Juniper Events", "table", f"SELECT _timestamp AS event_time, device_name, source_ip, syslog_program AS process, message, raw_message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Device", "device_name"), ("Sender IP", "source_ip"), ("Process", "process"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    return dashboard("Juniper Router Operations", "Separate Junos routing, interface, authentication, configuration and optional SRX security reporting.", [
+        build_tab("juniper", "jnpr_overview", "Overview", overview),
+        build_tab("juniper", "jnpr_trends", "Trends & Sources", trends),
+        build_tab("juniper", "jnpr_interfaces", "Interfaces", interfaces),
+        build_tab("juniper", "jnpr_routing", "Routing", routing),
+        build_tab("juniper", "jnpr_access", "Access & Changes", access),
+        build_tab("juniper", "jnpr_security", "SRX Security", security),
+        build_tab("juniper", "jnpr_raw", "Raw Events", raw),
+    ])
+
+
+def proxmox_ve_dashboard() -> dict:
+    """Operational reporting for Proxmox VE nodes, guests, tasks, and HA."""
+    s = '"proxmox_ve"'
+    overview = [
+        ("Total Events", "metric", f"SELECT count(*) AS value FROM {s}", [], [("Events", "value")]),
+        ("Errors / Critical", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error') OR lower(message) LIKE '% error%' OR lower(message) LIKE '%failed%'", [], [("Events", "value")]),
+        ("Authentication Failures", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(proxmox_authentication_result,'')) LIKE '%fail%' OR lower(message) LIKE '%authentication failure%' OR lower(message) LIKE '%failed password%'", [], [("Failures", "value")]),
+        ("Guest Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE proxmox_vmid IS NOT NULL OR proxmox_ctid IS NOT NULL OR proxmox_resource IS NOT NULL", [], [("Events", "value")]),
+        ("Task Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE proxmox_upid IS NOT NULL OR lower(message) LIKE '%starting task%' OR lower(message) LIKE '%end task%'", [], [("Events", "value")]),
+        ("Active Nodes", "metric", f"SELECT count(DISTINCT device_name) AS value FROM {s} WHERE device_name IS NOT NULL", [], [("Nodes", "value")]),
+    ]
+    trends = [
+        ("Events Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Severity Distribution", "donut", f"SELECT coalesce(syslog_severity,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC", [("Severity", "label")], [("Events", "value")]),
+        ("Events by Node", "bar", f"SELECT coalesce(device_name,host_name,source_ip,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 20", [("Node", "label")], [("Events", "value")]),
+        ("Top Services", "bar", f"SELECT coalesce(syslog_program,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 25", [("Service", "label")], [("Events", "value")]),
+    ]
+    authentication = [
+        ("Authentication Outcomes", "donut", f"SELECT CASE WHEN lower(coalesce(proxmox_authentication_result,'')) IN ('accepted','successful','success') OR lower(message) LIKE '%accepted%' THEN 'success' WHEN lower(coalesce(proxmox_authentication_result,'')) LIKE '%fail%' OR lower(coalesce(proxmox_authentication_result,'')) = 'denied' OR lower(message) LIKE '%failed%' THEN 'failure' ELSE 'other' END AS label, count(*) AS value FROM {s} WHERE proxmox_authentication_result IS NOT NULL OR lower(syslog_program) IN ('sshd','pvedaemon','pveproxy','sudo') GROUP BY label ORDER BY value DESC", [("Outcome", "label")], [("Events", "value")]),
+        ("Top Users", "bar", f"SELECT proxmox_user AS label, count(*) AS value FROM {s} WHERE proxmox_user IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("User", "label")], [("Events", "value")]),
+        ("Top Login Source IPs", "bar", f"SELECT proxmox_source_ip AS label, count(*) AS value FROM {s} WHERE proxmox_source_ip IS NOT NULL AND lower(syslog_program) IN ('sshd','pvedaemon','pveproxy') GROUP BY label ORDER BY value DESC LIMIT 25", [("Source IP", "label")], [("Events", "value")]),
+        ("Authentication / Sudo Detail", "table", f"SELECT _timestamp AS event_time, device_name AS node, proxmox_user AS user_name, proxmox_source_ip AS source_ip, proxmox_authentication_result AS outcome, syslog_program AS service, syslog_severity AS severity, message, raw_message FROM {s} WHERE proxmox_authentication_result IS NOT NULL OR proxmox_user IS NOT NULL OR lower(syslog_program) IN ('sshd','sudo','su') ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Node", "node"), ("User", "user_name"), ("Source IP", "source_ip"), ("Outcome", "outcome"), ("Service", "service"), ("Severity", "severity"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    guests = [
+        ("Top VM IDs", "bar", f"SELECT proxmox_vmid AS label, count(*) AS value FROM {s} WHERE proxmox_vmid IS NOT NULL AND proxmox_vmid <> '' GROUP BY label ORDER BY value DESC LIMIT 25", [("VM ID", "label")], [("Events", "value")]),
+        ("Top Container IDs", "bar", f"SELECT proxmox_ctid AS label, count(*) AS value FROM {s} WHERE proxmox_ctid IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("CT ID", "label")], [("Events", "value")]),
+        ("Guest Start / Stop", "donut", f"SELECT CASE WHEN lower(message) LIKE '%start%' THEN 'start' WHEN lower(message) LIKE '%stop%' OR lower(message) LIKE '%shutdown%' THEN 'stop/shutdown' WHEN lower(message) LIKE '%migrat%' THEN 'migration' ELSE 'other' END AS label, count(*) AS value FROM {s} WHERE proxmox_vmid IS NOT NULL OR proxmox_ctid IS NOT NULL OR proxmox_resource IS NOT NULL GROUP BY label ORDER BY value DESC", [("Action", "label")], [("Events", "value")]),
+        ("Guest Events Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE proxmox_vmid IS NOT NULL OR proxmox_ctid IS NOT NULL OR proxmox_resource IS NOT NULL GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Migration / Replication Events", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(message) LIKE '%migrat%' OR lower(message) LIKE '%replicat%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Guest Activity Detail", "table", f"SELECT _timestamp AS event_time, device_name AS node, proxmox_vmid AS vmid, proxmox_ctid AS ctid, proxmox_resource AS resource, proxmox_task AS task, proxmox_user AS user_name, syslog_program AS service, message, raw_message FROM {s} WHERE proxmox_vmid IS NOT NULL OR proxmox_ctid IS NOT NULL OR proxmox_resource IS NOT NULL ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Node", "node"), ("VM ID", "vmid"), ("CT ID", "ctid"), ("Resource", "resource"), ("Task", "task"), ("User", "user_name"), ("Service", "service"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    tasks = [
+        ("Task Types", "bar", f"SELECT coalesce(proxmox_task,'unknown') AS label, count(*) AS value FROM {s} WHERE proxmox_upid IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("Task", "label")], [("Events", "value")]),
+        ("Tasks by User", "bar", f"SELECT coalesce(proxmox_user,'unknown') AS label, count(*) AS value FROM {s} WHERE proxmox_upid IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 25", [("User", "label")], [("Tasks", "value")]),
+        ("Task Failures", "metric", f"SELECT count(*) AS value FROM {s} WHERE (proxmox_upid IS NOT NULL OR lower(message) LIKE '%task%') AND (lower(message) LIKE '%error%' OR lower(message) LIKE '%fail%')", [], [("Failures", "value")]),
+        ("Task Events Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE proxmox_upid IS NOT NULL OR lower(message) LIKE '%starting task%' OR lower(message) LIKE '%end task%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Task / UPID Detail", "table", f"SELECT _timestamp AS event_time, coalesce(proxmox_node,device_name) AS node, proxmox_task AS task, proxmox_vmid AS vmid, proxmox_user AS user_name, proxmox_upid AS upid, syslog_program AS service, message, raw_message FROM {s} WHERE proxmox_upid IS NOT NULL OR lower(message) LIKE '%task%' ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Node", "node"), ("Task", "task"), ("VM ID", "vmid"), ("User", "user_name"), ("UPID", "upid"), ("Service", "service"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    cluster = [
+        ("HA / Cluster Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(syslog_program) IN ('pve-ha-lrm','pve-ha-crm','corosync','pmxcfs') OR lower(message) LIKE '%quorum%' OR lower(message) LIKE '%cluster%'", [], [("Events", "value")]),
+        ("Quorum / Membership Changes", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(message) LIKE '%quorum%' OR lower(message) LIKE '%membership%' OR lower(message) LIKE '%member%' GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("HA Service Distribution", "bar", f"SELECT coalesce(syslog_program,'unknown') AS label, count(*) AS value FROM {s} WHERE lower(syslog_program) IN ('pve-ha-lrm','pve-ha-crm','corosync','pmxcfs') GROUP BY label ORDER BY value DESC", [("Service", "label")], [("Events", "value")]),
+        ("HA Errors / Fencing", "metric", f"SELECT count(*) AS value FROM {s} WHERE (lower(message) LIKE '% ha %' OR lower(syslog_program) LIKE 'pve-ha-%' OR lower(message) LIKE '%fenc%') AND (lower(message) LIKE '%error%' OR lower(message) LIKE '%fail%' OR lower(message) LIKE '%fenc%')", [], [("Events", "value")]),
+        ("HA / Cluster Detail", "table", f"SELECT _timestamp AS event_time, device_name AS node, syslog_program AS service, syslog_severity AS severity, proxmox_resource AS resource, message, raw_message FROM {s} WHERE lower(syslog_program) IN ('pve-ha-lrm','pve-ha-crm','corosync','pmxcfs') OR lower(message) LIKE '%quorum%' OR lower(message) LIKE '%cluster%' OR lower(message) LIKE '%fenc%' ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Node", "node"), ("Service", "service"), ("Severity", "severity"), ("Resource", "resource"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    raw = [
+        ("Service Failures & System Errors", "table", f"SELECT _timestamp AS event_time, device_name AS node, syslog_severity AS severity, syslog_program AS service, message, raw_message FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error') OR lower(message) LIKE '%failed%' OR lower(message) LIKE '% error%' ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Node", "node"), ("Severity", "severity"), ("Service", "service"), ("Message", "message"), ("Raw", "raw_message")], []),
+        ("Raw Proxmox VE Events", "table", f"SELECT _timestamp AS event_time, received_at, device_name AS node, host_name AS host, source_ip AS collector_source_ip, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS service, message, raw_message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Received", "received_at"), ("Node", "node"), ("Host", "host"), ("Sender IP", "collector_source_ip"), ("Facility", "facility"), ("Severity", "severity"), ("Service", "service"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    return dashboard("Proxmox VE Operations", "Separate Proxmox VE node, authentication, guest, task, HA, cluster and service reporting.", [
+        build_tab("proxmox_ve", "pve_overview", "Overview", overview),
+        build_tab("proxmox_ve", "pve_trends", "Trends & Services", trends),
+        build_tab("proxmox_ve", "pve_auth", "Authentication", authentication),
+        build_tab("proxmox_ve", "pve_guests", "VMs & Containers", guests),
+        build_tab("proxmox_ve", "pve_tasks", "Tasks", tasks),
+        build_tab("proxmox_ve", "pve_cluster", "HA & Cluster", cluster),
+        build_tab("proxmox_ve", "pve_raw", "System & Raw", raw),
+    ])
+
+
 def dashboard(title: str, description: str, tabs: list[dict]) -> dict:
     return {
         "version": 5,
@@ -355,6 +491,62 @@ def api_request(base: str, path: str, user: str, password: str, method: str = "G
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")
         raise RuntimeError(f"OpenObserve API {method} {path} failed ({exc.code}): {detail}") from exc
+
+
+def bootstrap_schema(base: str, org: str, user: str, password: str, name: str) -> None:
+    """Create a future source's stream/schema with one excluded marker."""
+    common = {
+        "_timestamp": int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+        "schema_bootstrap": "true",
+        "received_at": "2026-01-01T00:00:00Z",
+        "device_name": "schema-bootstrap",
+        "host_name": "schema-bootstrap",
+        "source_ip": "192.0.2.254",
+        "syslog_facility": "local7",
+        "syslog_severity": "notice",
+        "syslog_program": "schema-bootstrap",
+        "message": "schema-bootstrap: not an operational event",
+        "raw_message": "schema-bootstrap: not an operational event",
+    }
+    records = {
+        "juniper": {
+            **common,
+            "juniper_event": "SCHEMA_BOOTSTRAP",
+            "juniper_interface": "xe-0/0/0.0",
+            "juniper_routing_instance": "bootstrap-vrf",
+            "juniper_peer_ip": "192.0.2.1",
+            "juniper_username": "bootstrap-user",
+            "juniper_source_address": "192.0.2.10",
+            "juniper_source_port": "12345",
+            "juniper_destination_address": "198.51.100.10",
+            "juniper_destination_port": "443",
+            "juniper_policy": "bootstrap-policy",
+            "juniper_source_zone": "bootstrap-source",
+            "juniper_destination_zone": "bootstrap-destination",
+            "juniper_protocol": "tcp",
+            "juniper_session_id": "1",
+        },
+        "proxmox-ve": {
+            **common,
+            "proxmox_authentication_result": "success",
+            "proxmox_user": "bootstrap@pam",
+            "proxmox_source_ip": "192.0.2.10",
+            "proxmox_upid": "UPID:schema-bootstrap:0:0:0:qmstart:100:bootstrap@pam:",
+            "proxmox_node": "schema-bootstrap",
+            "proxmox_task": "qmstart",
+            "proxmox_vmid": "100",
+            "proxmox_ctid": "101",
+            "proxmox_resource": "vm:100",
+        },
+    }
+    if name not in records:
+        raise RuntimeError("schema bootstrap is only supported for juniper and proxmox-ve")
+    stream = "proxmox_ve" if name == "proxmox-ve" else name
+    encoded_org = urllib.parse.quote(org, safe="")
+    encoded_stream = urllib.parse.quote(stream, safe="")
+    api_request(base, f"/api/{encoded_org}/{encoded_stream}/_json", user, password,
+                "POST", [records[name]])
+    print(f"bootstrapped stream schema: {stream} (marker is excluded from bundled dashboards)")
 
 
 def upsert(base: str, org: str, user: str, password: str, body: dict) -> None:
@@ -406,11 +598,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
-    parser.add_argument("--only", choices=("pmg", "fortigate"))
+    parser.add_argument("--only", choices=("pmg", "fortigate", "juniper", "proxmox-ve"))
+    parser.add_argument("--bootstrap-schema", action="store_true",
+                        help="create the selected future stream schema with one excluded marker")
     parser.add_argument("--validate-queries", action="store_true",
                         help="execute every panel SQL query over the past 30 days")
     args = parser.parse_args()
-    dashboards = {"pmg": pmg_dashboard(), "fortigate": fortigate_dashboard()}
+    dashboards = {
+        "pmg": pmg_dashboard(),
+        "fortigate": fortigate_dashboard(),
+        "juniper": juniper_dashboard(),
+        "proxmox-ve": proxmox_ve_dashboard(),
+    }
     if args.only:
         dashboards = {args.only: dashboards[args.only]}
     if args.export_dir:
@@ -426,6 +625,12 @@ def main() -> int:
     if missing:
         raise RuntimeError("missing required environment settings: " + ", ".join(missing))
     base = os.environ.get("OPENOBSERVE_INTERNAL_URL", "http://127.0.0.1:5080")
+    if args.bootstrap_schema:
+        if args.only not in {"juniper", "proxmox-ve"}:
+            raise RuntimeError("--bootstrap-schema requires --only juniper or --only proxmox-ve")
+        bootstrap_schema(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"],
+                         os.environ["ZO_ROOT_USER_PASSWORD"], args.only)
+        return 0
     if args.validate_queries:
         validate_queries(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"],
                          os.environ["ZO_ROOT_USER_PASSWORD"], dashboards)

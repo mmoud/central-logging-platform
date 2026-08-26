@@ -19,4 +19,7 @@ for required_dir in "$DATA_DIR/openobserve" "$DATA_DIR/syslog-ng/buffer" "$DATA_
 done
 dc config -q
 dc run --rm --no-deps --entrypoint /usr/sbin/syslog-ng syslog-ng -s -f /etc/syslog-ng/syslog-ng.conf
+if [ "${RUN_VENDOR_PARSER_TESTS:-false}" = true ]; then
+  tests/test-vendor-parsers.sh
+fi
 echo 'Validation passed.'
