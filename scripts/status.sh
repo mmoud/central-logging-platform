@@ -17,7 +17,7 @@ for service in openobserve syslog-ng report-server; do
   printf '%-18s %s\n' "$service" "$state"
 done
 printf '\nDisk (%s)\n' "$DATA_DIR"
-df -h "$DATA_DIR" | awk 'NR==2 {printf "Used %-12s Free %s\\n", $3, $4}'
+df -h "$DATA_DIR" | awk 'NR==2 {printf "Used %-12s Free %s\n", $3, $4}'
 printf '\nOpenObserve retention  %s days\n' "$ZO_COMPACT_DATA_RETENTION_DAYS"
 listener_status() {
   local label=$1 options=$2 port=$3
