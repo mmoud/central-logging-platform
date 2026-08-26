@@ -11,7 +11,15 @@ done
 printf '\nDisk (%s)\n' "$DATA_DIR"
 df -h "$DATA_DIR" | awk 'NR==2 {printf "Used %-12s Free %s\\n", $3, $4}'
 printf '\nOpenObserve retention  %s days\n' "$ZO_COMPACT_DATA_RETENTION_DAYS"
-for item in 'UDP/514 udp' 'TCP/514 tcp' 'TLS/6514 tls'; do
-  set -- $item
-  if ss -H -ln"$2" "( sport = :${1#*/} )" 2>/dev/null | grep -q .; then printf '%-18s LISTENING\n' "$1"; else printf '%-18s NOT LISTENING\n' "$1"; fi
-done
+listener_status() {
+  local label=$1 options=$2 port=$3
+  if ss -H "$options" "( sport = :$port )" 2>/dev/null | grep -q .; then
+    printf '%-18s LISTENING\n' "$label"
+  else
+    printf '%-18s NOT LISTENING\n' "$label"
+  fi
+}
+
+listener_status 'UDP/514' '-lnu' '514'
+listener_status 'TCP/514' '-lnt' '514'
+listener_status 'TLS/6514' '-lnt' '6514'
