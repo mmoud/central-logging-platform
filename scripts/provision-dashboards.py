@@ -22,9 +22,13 @@ DASHBOARD_FOLDERS = {
     "juniper": ("Network & Security", "Firewall, router and network security reporting."),
     "proxmox-ve": ("Infrastructure", "Virtualization and host operations."),
     "ubersmith": ("Applications", "Application and business-system operations."),
-    "ubersmith-mail": ("Messaging", "PMG handoff and Ubersmith mail-ingestion reporting."),
+    "ubersmith-mail": ("Messaging", "PMG handoff and Ubersmith mail-layer receipt reporting."),
     "unclassified": ("Source Discovery", "Unknown-source discovery and onboarding."),
     "overview": ("Logging Overview", "Cross-platform collection and freshness overview."),
+}
+
+DASHBOARD_LEGACY_TITLES = {
+    "PMG to Ubersmith Mail Handoff": ("PMG to Ubersmith Mail Ingestion",),
 }
 
 
@@ -653,15 +657,15 @@ def ubersmith_mail_dashboard() -> dict:
     )
     investigation_options = {"dashboard_filter": False, "schema_exclusion": False}
     investigation = [
-        ("PMG to Ubersmith Message Correlation", "table", correlated_messages + "SELECT p.pmg_last_event AS event_time, p.mail_filter_id AS filter_id, p.pmg_message_id AS message_id, p.pmg_sender AS sender, p.pmg_recipient AS recipient, p.pmg_subject AS subject, p.pmg_delivery_queue AS pmg_queue_id, u.u_first_event AS ubersmith_first_seen, u.u_queue_id AS ubersmith_queue_id, CASE WHEN u.u_message_id IS NOT NULL THEN 'received by Ubersmith mail layer' ELSE 'not correlated in selected range' END AS ingestion_result, u.u_status AS ubersmith_status, u.u_event_count AS ubersmith_events FROM pmg_messages p LEFT JOIN ubersmith_receipts u ON lower(p.pmg_message_id) = lower(u.u_message_id) ORDER BY event_time DESC LIMIT 250", [("PMG Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Message-ID", "message_id"), ("Sender", "sender"), ("Recipient", "recipient"), ("Subject", "subject"), ("PMG Queue ID", "pmg_queue_id"), ("Ubersmith First Seen", "ubersmith_first_seen"), ("Ubersmith Queue ID", "ubersmith_queue_id"), ("Ingestion Result", "ingestion_result"), ("Ubersmith Status", "ubersmith_status"), ("Ubersmith Events", "ubersmith_events")], [], investigation_options),
+        ("PMG to Ubersmith Message Correlation", "table", correlated_messages + "SELECT p.pmg_last_event AS event_time, p.mail_filter_id AS filter_id, p.pmg_message_id AS message_id, p.pmg_sender AS sender, p.pmg_recipient AS recipient, p.pmg_subject AS subject, p.pmg_delivery_queue AS pmg_queue_id, u.u_first_event AS ubersmith_first_seen, u.u_queue_id AS ubersmith_queue_id, u.u_status AS ubersmith_status, u.u_event_count AS ubersmith_events FROM pmg_messages p LEFT JOIN ubersmith_receipts u ON lower(p.pmg_message_id) = lower(u.u_message_id) ORDER BY event_time DESC LIMIT 250", [("PMG Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Message-ID", "message_id"), ("Sender", "sender"), ("Recipient", "recipient"), ("Subject", "subject"), ("PMG Queue ID", "pmg_queue_id"), ("Ubersmith First Seen", "ubersmith_first_seen"), ("Ubersmith Queue ID", "ubersmith_queue_id"), ("Ubersmith Mail Status", "ubersmith_status"), ("Ubersmith Mail Events", "ubersmith_events")], [], investigation_options),
         ("Ubersmith Mail Queue Timeline", "table", matched_queues + f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, mail_message_id AS message_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_dsn AS dsn, mail_status AS status, mail_delay AS delay, message FROM {u} WHERE coalesce(schema_bootstrap,'false') <> 'true' AND mail_queue_id IN (SELECT matched_queue_id FROM matching_ubersmith_queues) ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Message-ID", "message_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("DSN", "dsn"), ("Status", "status"), ("Delay", "delay"), ("Message", "message")], [], investigation_options),
     ]
     raw = [
         ("Recent Ubersmith Mail Events", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, mail_message_id AS message_id, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_dsn AS dsn, mail_status AS status, message, raw_message FROM {u} WHERE syslog_program = 'ubersmith/mail' ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Message-ID", "message_id"), ("Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("DSN", "dsn"), ("Status", "status"), ("Message", "message"), ("Raw", "raw_message")], []),
     ]
     return dashboard(
-        "PMG to Ubersmith Mail Ingestion",
-        "Tracks PMG handoff into Ubersmith's Postfix mail layer. Ticket creation is not claimed unless Ubersmith emits a shared Message-ID or ticket identifier.",
+        "PMG to Ubersmith Mail Handoff",
+        "Tracks factual PMG handoff and Message-ID/queue evidence in Ubersmith's Postfix mail layer. It does not report application or ticket ingestion.",
         [
             build_tab("ubersmith", "uber_mail_overview", "Overview", overview[:6], dashboard_filter=False),
             build_tab("ubersmith", "uber_mail_activity", "Activity & Status", overview[6:], dashboard_filter=False),
@@ -1002,6 +1006,15 @@ def upsert(base: str, org: str, user: str, password: str, body: dict,
     title_query = urllib.parse.urlencode({"title": body["title"]})
     listing = api_request(base, f"/api/{encoded_org}/dashboards?{title_query}", user, password)
     existing = next((item for item in listing.get("dashboards", []) if item.get("title") == body["title"]), None)
+    if not existing:
+        for legacy_title in DASHBOARD_LEGACY_TITLES.get(body["title"], ()):
+            legacy_query = urllib.parse.urlencode({"title": legacy_title})
+            legacy_listing = api_request(base, f"/api/{encoded_org}/dashboards?{legacy_query}", user, password)
+            existing = next((item for item in legacy_listing.get("dashboards", [])
+                             if item.get("title") == legacy_title), None)
+            if existing:
+                print(f"renaming managed dashboard: {legacy_title} -> {body['title']}")
+                break
     if existing:
         source_folder = existing.get("folder_id", "default")
         if source_folder != folder_id:

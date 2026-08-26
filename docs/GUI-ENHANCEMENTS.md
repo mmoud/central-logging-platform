@@ -10,7 +10,7 @@ HTTP APIs. It does not modify the internal SQLite database.
 | Folder | Dashboards |
 |---|---|
 | Logging Overview | Central Logging Overview |
-| Messaging | PMG Mail Reporting; PMG Message Investigation; PMG to Ubersmith Mail Ingestion |
+| Messaging | PMG Mail Reporting; PMG Message Investigation; PMG to Ubersmith Mail Handoff |
 | Network & Security | FortiGate Security & Traffic; Juniper Router Operations |
 | Infrastructure | Proxmox VE Operations |
 | Applications | Ubersmith Billing Operations |
@@ -21,7 +21,7 @@ panel by `device_name`; Unclassified Source Discovery filters by `source_ip`.
 Select all values to return to the fleet view. Both PMG dashboards default to 7
 days because mail reporting and message tracing commonly cross day boundaries;
 other dashboards default to 24 hours to keep interactive queries responsive.
-PMG Message Investigation and PMG to Ubersmith Mail Ingestion have free-form
+PMG Message Investigation and PMG to Ubersmith Mail Handoff have free-form
 sender and recipient inputs for message, Message-ID and Postfix queue
 correlation.
 
