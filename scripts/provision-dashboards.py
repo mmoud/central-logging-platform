@@ -302,7 +302,7 @@ def pmg_dashboards() -> dict[str, dict]:
         build_tab("proxmox_mail_gateway", "pmg_filter_activity", "Filter Activity", filtering[4:8]),
         build_tab("proxmox_mail_gateway", "pmg_authentication", "Email Authentication", authentication[:6]),
         build_tab("proxmox_mail_gateway", "pmg_tls", "TLS", tls),
-    ], relative_period="7d")
+    ], relative_period="6h")
     investigation_dashboard = dashboard(
         "PMG Message Investigation",
         "Address-driven PMG filtering, authentication, queue and raw-event investigation.",
@@ -321,7 +321,7 @@ def pmg_dashboards() -> dict[str, dict]:
         {"type": "textbox", "name": "recipient", "label": "Recipient email", "value": "_o2_all_",
          "options": [], "multiSelect": False, "hideOnDashboard": False,
          "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
-        ], relative_period="7d")
+        ], relative_period="6h")
     return {"pmg-reporting": reporting, "pmg-investigation": investigation_dashboard}
 
 
@@ -500,7 +500,7 @@ def fortigate_investigation_dashboard() -> dict:
             build_tab("fortigate", "fg_inv_system", "Admin, VPN, HA & Routing", system),
             build_tab("fortigate", "fg_inv_raw", "Raw Evidence", raw),
         ],
-        relative_period="24h",
+        relative_period="6h",
         extra_variables=[
             textbox("src_ip", "Source / translated IP"),
             textbox("dst_ip", "Destination / translated IP"),
@@ -747,7 +747,7 @@ def ubersmith_mail_dashboard() -> dict:
             build_tab("ubersmith", "uber_mail_raw", "Ubersmith Mail Events", raw, dashboard_filter=False),
         ],
         stream=None,
-        relative_period="7d",
+        relative_period="6h",
         extra_variables=[
             {"type": "textbox", "name": "sender", "label": "Sender email", "value": "_o2_all_",
              "options": [], "multiSelect": False, "hideOnDashboard": False,
@@ -861,7 +861,7 @@ def central_overview_dashboard() -> dict:
         "Separate fleet-level ingestion, freshness, volume and triage summary; use each vendor dashboard for detail.",
         tabs,
         stream=None,
-        relative_period="24h",
+        relative_period="6h",
     )
 
 
@@ -892,7 +892,7 @@ def dashboard(title: str, description: str, tabs: list[dict], *, stream: str | N
         })
     variables.extend(extra_variables or [])
     if relative_period is None:
-        relative_period = "7d" if title == "PMG Mail Reporting" else "24h"
+        relative_period = "6h"
     return {
         "version": 5,
         "dashboardId": "",

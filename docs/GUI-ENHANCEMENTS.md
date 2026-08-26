@@ -18,9 +18,9 @@ HTTP APIs. It does not modify the internal SQLite database.
 
 Detailed dashboards remain separate. Their query-backed selector filters every
 panel by `device_name`; Unclassified Source Discovery filters by `source_ip`.
-Select all values to return to the fleet view. Both PMG dashboards default to 7
-days because mail reporting and message tracing commonly cross day boundaries;
-other dashboards default to 24 hours to keep interactive queries responsive.
+Select all values to return to the fleet view. Every bundled dashboard defaults
+to 6 hours so initial loads remain responsive. Administrators can still select
+a longer range for historical reporting or an investigation when needed.
 PMG Message Investigation and PMG to Ubersmith Mail Handoff have free-form
 sender and recipient inputs for message, Message-ID and Postfix queue
 correlation.

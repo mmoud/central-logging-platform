@@ -159,8 +159,8 @@ def validate_ubersmith_bootstrap() -> None:
 
 def main() -> int:
     pmg = MODULE.pmg_dashboards()
-    validate_dashboard(pmg["pmg-reporting"], 40, "7d")
-    validate_dashboard(pmg["pmg-investigation"], 9, "7d",
+    validate_dashboard(pmg["pmg-reporting"], 40, "6h")
+    validate_dashboard(pmg["pmg-investigation"], 9, "6h",
                        extra_variables=("sender", "recipient"))
     validate_bootstrap_exclusion(pmg["pmg-reporting"])
     validate_bootstrap_exclusion(pmg["pmg-investigation"])
@@ -170,25 +170,25 @@ def main() -> int:
     fortigate_investigation = MODULE.fortigate_investigation_dashboard()
     juniper = MODULE.juniper_dashboard()
     proxmox_ve = MODULE.proxmox_ve_dashboard()
-    validate_dashboard(fortigate, 70, "24h")
+    validate_dashboard(fortigate, 70, "6h")
     validate_dashboard(
-        fortigate_investigation, 14, "24h", extra_variables=(
+        fortigate_investigation, 14, "6h", extra_variables=(
             "src_ip", "dst_ip", "fg_user", "session_id", "policy", "vdom", "search_text",
         ),
     )
-    validate_dashboard(juniper, 30, "24h")
-    validate_dashboard(proxmox_ve, 32, "24h", "source")
+    validate_dashboard(juniper, 30, "6h")
+    validate_dashboard(proxmox_ve, 32, "6h", "source")
     ubersmith = MODULE.ubersmith_dashboard()
     ubersmith_mail = MODULE.ubersmith_mail_dashboard()
-    validate_dashboard(ubersmith, 24, "24h")
-    validate_dashboard(ubersmith_mail, 15, "7d", None,
+    validate_dashboard(ubersmith, 24, "6h")
+    validate_dashboard(ubersmith_mail, 15, "6h", None,
                        extra_variables=("sender", "recipient"))
     validate_bootstrap_exclusion(ubersmith)
     validate_bootstrap_exclusion(ubersmith_mail)
     unclassified = MODULE.unclassified_dashboard()
     overview = MODULE.central_overview_dashboard()
-    validate_dashboard(unclassified, 24, "24h", "source")
-    validate_dashboard(overview, 22, "24h", None)
+    validate_dashboard(unclassified, 24, "6h", "source")
+    validate_dashboard(overview, 22, "6h", None)
     validate_visualization_choices([
         pmg["pmg-reporting"], pmg["pmg-investigation"], fortigate,
         fortigate_investigation, juniper, proxmox_ve,
