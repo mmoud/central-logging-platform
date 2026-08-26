@@ -37,5 +37,8 @@ Verified 2026-08-26. Prefer these upstream sources when changing the package.
 - [Junos syslog source-address reference](https://www.juniper.net/documentation/us/en/software/junos/cli-reference/topics/ref/statement/security-source-address-edit-system-ntp-radius-syslog-tacacs.html)
 - [Proxmox VE administration guide](https://pve.proxmox.com/pve-docs/pve-admin-guide.pdf)
 - [Proxmox VE pvedaemon reference](https://pve.proxmox.com/pve-docs/pvedaemon.8.html)
+- [rsyslog omfwd TCP framing](https://docs.rsyslog.com/doc/configuration/modules/omfwd.html#tcp-framing)
+- [rsyslog queue concepts and disk-assisted queues](https://docs.rsyslog.com/doc/concepts/queues.html)
+- [rsyslog reliable forwarding tutorial](https://docs.rsyslog.com/doc/tutorials/reliable_forwarding.html)
 
 OpenObserve supports the OSS `_json` and `_multi` APIs. This package uses `_multi` because syslog-ng HTTP batching produces newline-delimited JSON safely and efficiently. `ZO_COMPACT_DATA_RETENTION_DAYS=30` is the documented global setting. The supplied images are digest-pinned in `.env.example`; `scripts/update.sh --check` resolves official stable channels and `--apply` records a fresh immutable digest before deployment.

@@ -17,14 +17,20 @@ action(
   target="192.0.2.10"
   port="514"
   protocol="tcp"
+  TCP_Framing="octet-counted"
   template="RSYSLOG_SyslogProtocol23Format"
   queue.type="LinkedList"
   queue.filename="central_openobserve"
-  queue.maxdiskspace="1g"
-  queue.saveonshutdown="on"
+  queue.maxDiskSpace="1g"
+  queue.saveOnShutdown="on"
   action.resumeRetryCount="-1"
 )
 ```
+
+`TCP_Framing="octet-counted"` is required for this collector's syslog-ng TCP
+listener. It preserves message boundaries reliably, including multiline data.
+The named queue enables disk assistance under rsyslog's configured work
+directory; without `queue.filename`, a `LinkedList` action queue is memory-only.
 
 Validate and restart only after syntax succeeds:
 
@@ -32,6 +38,7 @@ Validate and restart only after syntax succeeds:
 rsyslogd -N1
 systemctl restart rsyslog
 logger -t pve-central-test "Proxmox VE central logging test"
+ss -tnp state established '( dport = :514 )'
 ```
 
 For a very simple TCP configuration, `*.* @@192.0.2.10:514` is also valid;
