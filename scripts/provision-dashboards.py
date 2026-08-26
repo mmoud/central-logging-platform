@@ -6,11 +6,12 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -25,8 +26,10 @@ def load_env(path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
-def axis(label: str, alias: str, *, color: str | None = None, sort: str | None = None) -> dict:
-    item = {"label": label, "alias": alias, "column": alias, "color": color, "isDerived": False}
+def axis(label: str, alias: str, column: str, *, color: str | None = None,
+         sort: str | None = None, aggregation: str | None = None) -> dict:
+    item = {"label": label, "alias": alias, "column": column, "color": color,
+            "aggregationFunction": aggregation, "isDerived": False}
     if sort:
         item["sortBy"] = sort
     return item
@@ -69,6 +72,31 @@ def make_panel(
     description: str = "",
     unit: str | None = None,
 ) -> dict:
+    # Dashboard schema v5's frontend is most reliable when custom SQL output
+    # columns use its canonical x_axis_N/y_axis_N names. Keep friendly labels
+    # in the axis metadata while rewriting only SQL alias declarations and
+    # GROUP/ORDER references (never source field names).
+    # OpenObserve tables model the first selected column as X and every other
+    # selected column as Y. A table with every column in X passes the API but
+    # the v5 renderer treats it as an incomplete panel and returns no rows.
+    if panel_type == "table" and x_fields:
+        table_fields = x_fields + y_fields
+        x_fields = table_fields[:1]
+        y_fields = table_fields[1:]
+
+    x_aliases = [(label, alias, f"x_axis_{index}") for index, (label, alias) in enumerate(x_fields, 1)]
+    y_aliases = [(label, alias, f"y_axis_{index}") for index, (label, alias) in enumerate(y_fields, 1)]
+    for _label, old, new in x_aliases + y_aliases:
+        query, replacements = re.subn(rf"(?i)\bAS\s+{re.escape(old)}\b", f'AS "{new}"', query)
+        if replacements == 0:
+            query = re.sub(
+                rf"(?i)(\bSELECT\s+|,\s*)({re.escape(old)})(\s*)(?=,|\s+FROM)",
+                lambda match: f'{match.group(1)}{match.group(2)} AS "{new}"{match.group(3)}',
+                query,
+                count=1,
+            )
+        query = re.sub(rf"(?i)\b(GROUP BY|ORDER BY)\s+{re.escape(old)}\b",
+                       lambda match: f"{match.group(1)} {new}", query)
     return {
         "id": ident,
         "type": panel_type,
@@ -83,8 +111,12 @@ def make_panel(
             "fields": {
                 "stream": stream,
                 "stream_type": "logs",
-                "x": [axis(label, alias, sort="ASC" if alias == "ts" else None) for label, alias in x_fields],
-                "y": [axis(label, alias, color="#5960b2") for label, alias in y_fields],
+                "x": [axis(label, canonical, alias, sort="ASC" if alias == "ts" else None,
+                           aggregation="histogram" if alias == "ts" else None)
+                      for label, alias, canonical in x_aliases],
+                "y": [axis(label, canonical, alias, color="#5960b2",
+                           aggregation=None if panel_type == "table" else "count")
+                      for label, alias, canonical in y_aliases],
                 "z": [],
                 "breakdown": [],
                 "filter": {"filterType": "group", "logicalOperator": "AND", "conditions": []},
@@ -106,9 +138,9 @@ def build_tab(stream: str, tab_id: str, name: str, specs: list[dict]) -> dict:
     for number, spec in enumerate(specs, start=1):
         panel_type = spec[1]
         width = 12 if panel_type == "metric" else 24
-        height = 8 if panel_type == "metric" else 13
+        height = 8 if panel_type == "metric" else 10
         if panel_type == "table":
-            width, height = 48, 17
+            width, height = 48, 13
         if row_x + width > 48:
             row_y += row_h
             row_x = 0
@@ -163,10 +195,18 @@ def pmg_dashboard() -> dict:
         ("Raw PMG / Postfix Events", "table", f"SELECT _timestamp AS event_time, host_name AS host, source_ip, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS program, message, raw_message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Host", "host"), ("Collector Source", "source_ip"), ("Facility", "facility"), ("Severity", "severity"), ("Program", "program"), ("Message", "message"), ("Raw", "raw_message")], []),
     ]
     return dashboard("PMG Mail Reporting", "Comprehensive PMG/Postfix mail-flow, delivery, filtering and queue-ID correlation reporting.", [
-        build_tab("proxmox_mail_gateway", "pmg_overview", "Overview", overview),
-        build_tab("proxmox_mail_gateway", "pmg_flow", "Mail Flow", flow),
-        build_tab("proxmox_mail_gateway", "pmg_filtering", "Filtering & Delivery", filtering),
-        build_tab("proxmox_mail_gateway", "pmg_trace", "Queue Trace & Raw", trace),
+        build_tab("proxmox_mail_gateway", "pmg_overview", "Overview", overview[:6]),
+        build_tab("proxmox_mail_gateway", "pmg_volume", "Volume & Components", overview[6:9] + flow[8:9]),
+        build_tab("proxmox_mail_gateway", "pmg_recent", "Recent Mail", overview[9:]),
+        build_tab("proxmox_mail_gateway", "pmg_people", "Senders & Recipients", flow[:4]),
+        build_tab("proxmox_mail_gateway", "pmg_routing", "Routing & SMTP", flow[4:8]),
+        build_tab("proxmox_mail_gateway", "pmg_delivery", "Delivery Performance", flow[9:]),
+        build_tab("proxmox_mail_gateway", "pmg_filtering", "Filtering", filtering[:4]),
+        build_tab("proxmox_mail_gateway", "pmg_filter_activity", "Filter Activity", filtering[4:6]),
+        build_tab("proxmox_mail_gateway", "pmg_filter_detail", "Spam / Virus Detail", filtering[6:7]),
+        build_tab("proxmox_mail_gateway", "pmg_delivery_detail", "Rejected / Deferred", filtering[7:]),
+        build_tab("proxmox_mail_gateway", "pmg_trace", "Queue Trace", trace[:1]),
+        build_tab("proxmox_mail_gateway", "pmg_raw", "Raw Events", trace[1:]),
     ])
 
 
@@ -219,10 +259,19 @@ def fortigate_dashboard() -> dict:
         ("Raw FortiGate Events", "table", f"SELECT _timestamp AS event_time, received_at, device_name, source_ip AS collector_source_ip, fortigate_devname AS fortigate_device, fortigate_devid AS serial, fortigate_vd AS vdom, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS program, message, raw_message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Received", "received_at"), ("Mapped Device", "device_name"), ("Sender IP", "collector_source_ip"), ("FortiGate", "fortigate_device"), ("Serial", "serial"), ("VDOM", "vdom"), ("Facility", "facility"), ("Severity", "severity"), ("Program", "program"), ("Message", "message"), ("Raw", "raw_message")], []),
     ]
     return dashboard("FortiGate Security & Traffic", "FortiGate traffic, UTM/threat, VDOM, VPN, administrative, HA and routing reporting.", [
-        build_tab("fortigate", "fg_overview", "Overview", overview),
-        build_tab("fortigate", "fg_traffic", "Traffic", traffic),
-        build_tab("fortigate", "fg_security", "Security", security),
-        build_tab("fortigate", "fg_system", "Admin, VPN & System", system),
+        build_tab("fortigate", "fg_overview", "Overview", overview[:6]),
+        build_tab("fortigate", "fg_classification", "VDOM & Classification", overview[6:9]),
+        build_tab("fortigate", "fg_recent", "Recent Events", overview[9:]),
+        build_tab("fortigate", "fg_traffic_top", "Traffic Topology", traffic[:4]),
+        build_tab("fortigate", "fg_traffic_geo", "Applications & Geography", traffic[4:7]),
+        build_tab("fortigate", "fg_traffic_volume", "Traffic Volume", traffic[7:9]),
+        build_tab("fortigate", "fg_traffic_detail", "Traffic Detail", traffic[9:]),
+        build_tab("fortigate", "fg_security", "Security Summary", security[:4]),
+        build_tab("fortigate", "fg_security_action", "Blocking & Threats", security[4:8]),
+        build_tab("fortigate", "fg_security_detail", "Security Detail", security[8:]),
+        build_tab("fortigate", "fg_system", "Admin, VPN & HA", system[:4]),
+        build_tab("fortigate", "fg_routing", "Routing", system[4:5]),
+        build_tab("fortigate", "fg_system_detail", "System Detail", system[5:]),
         build_tab("fortigate", "fg_raw", "Raw Events", raw),
     ])
 
@@ -270,11 +319,44 @@ def upsert(base: str, org: str, user: str, password: str, body: dict) -> None:
         print(f"created dashboard: {body['title']}")
 
 
+def validate_queries(base: str, org: str, user: str, password: str,
+                     dashboards: dict[str, dict]) -> None:
+    """Execute every panel query over the dashboard's default 30-day range."""
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=30)
+    path = f"/api/{urllib.parse.quote(org, safe='')}/_search?type=logs"
+    failures: list[str] = []
+    checked = 0
+    for body in dashboards.values():
+        for tab in body["tabs"]:
+            for panel in tab["panels"]:
+                checked += 1
+                request = {
+                    "query": {
+                        "sql": panel["queries"][0]["query"],
+                        "start_time": int(start.timestamp() * 1_000_000),
+                        "end_time": int(end.timestamp() * 1_000_000),
+                        "from": 0,
+                        "size": 100,
+                    },
+                    "search_type": "dashboards",
+                }
+                try:
+                    api_request(base, path, user, password, "POST", request)
+                except RuntimeError as exc:
+                    failures.append(f"{body['title']} / {tab['name']} / {panel['title']}: {exc}")
+    if failures:
+        raise RuntimeError("dashboard query validation failed:\n" + "\n".join(failures))
+    print(f"dashboard queries passed: {checked}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
     parser.add_argument("--only", choices=("pmg", "fortigate"))
+    parser.add_argument("--validate-queries", action="store_true",
+                        help="execute every panel SQL query over the past 30 days")
     args = parser.parse_args()
     dashboards = {"pmg": pmg_dashboard(), "fortigate": fortigate_dashboard()}
     if args.only:
@@ -292,6 +374,10 @@ def main() -> int:
     if missing:
         raise RuntimeError("missing required environment settings: " + ", ".join(missing))
     base = os.environ.get("OPENOBSERVE_INTERNAL_URL", "http://127.0.0.1:5080")
+    if args.validate_queries:
+        validate_queries(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"],
+                         os.environ["ZO_ROOT_USER_PASSWORD"], dashboards)
+        return 0
     for body in dashboards.values():
         upsert(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"], os.environ["ZO_ROOT_USER_PASSWORD"], body)
     return 0

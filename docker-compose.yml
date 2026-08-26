@@ -12,6 +12,7 @@ services:
       ZO_COMPACT_DATA_RETENTION_DAYS: ${ZO_COMPACT_DATA_RETENTION_DAYS:-30}
       ZO_WEB_URL: ${ZO_WEB_URL:-http://localhost:5080}
       ZO_REPORT_SERVER_URL: ${ZO_REPORT_SERVER_URL:-http://report-server:5090}
+      ZO_STREAMING_ENABLED: ${ZO_STREAMING_ENABLED:-true}
       ZO_TELEMETRY: "false"
       ZO_HEALTH_CHECK_ENABLED: "true"
     ports:

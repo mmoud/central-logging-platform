@@ -58,7 +58,9 @@ cd /opt/logging-platform
 ./scripts/provision-dashboards.py --only pmg
 ```
 
-The **PMG Mail Reporting** dashboard includes Overview, Mail Flow, Filtering &
-Delivery, and Queue Trace & Raw tabs. It covers volume, delivery outcomes,
+The **PMG Mail Reporting** dashboard uses focused tabs for overview, volume and
+components, recent mail, senders and recipients, routing and SMTP, delivery,
+filtering, queue-ID trace, and raw events. It covers volume, delivery outcomes,
 senders/recipients/domains, relays, source IPs, size, delay, DSN, SMTP response,
-spam, malware, rejects, deferrals, and queue-ID investigation.
+spam, malware, rejects, deferrals, and queue-ID investigation. Keeping each tab
+small also prevents duplicate lazy-loaded query results in current OpenObserve.

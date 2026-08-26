@@ -12,6 +12,7 @@ Verified 2026-08-25. Prefer these upstream sources when changing the package.
 - [OpenObserve Report Server setup](https://openobserve.ai/blog/openobserve-report-server-set-up/)
 - [OpenObserve dashboard API](https://api.openobserve.ai/swagger/index.html)
 - [OpenObserve dashboard documentation](https://openobserve.ai/docs/user-guide/analytics/dashboards/)
+- [OpenObserve streaming search](https://openobserve.ai/docs/user-guide/account-administration/management/streaming-search/)
 - [syslog-ng official image and configuration repository](https://github.com/syslog-ng/syslog-ng)
 - [syslog-ng OSE HTTP and durable disk-buffer options](https://origin-support.syslog-ng.com/technical-documents/doc/syslog-ng-open-source-edition/3.38/administration-guide/40)
 - [syslog-ng source flags, including raw-message storage](https://syslog-ng.github.io/admin-guide/060_Sources/170_Syslog/000_syslog_source_options)
