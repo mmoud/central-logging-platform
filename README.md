@@ -38,9 +38,11 @@ OpenObserve starts on HTTP `http://SERVER:5080`; put a TLS reverse proxy in fron
 | 514 | UDP/TCP | Syslog listeners |
 | 6514 | TCP/TLS | Syslog over TLS, after TLS is enabled |
 
-OpenObserve data, SQLite metadata, WAL, and stream data live under `${DATA_DIR}/openobserve`. syslog-ng state and reliable queues live under `${DATA_DIR}/syslog-ng`. The default 1 GiB durable buffer per supplied stream reserves 7 GiB because `prealloc(yes)` is intentionally used; adjust `SYSLOG_DISK_BUFFER_BYTES_PER_STREAM` in `.env` to fit the disk. Container logs are capped at 20 MiB × 5 files per container.
+OpenObserve data, SQLite metadata, WAL, and stream data live under `${DATA_DIR}/openobserve`. syslog-ng state and reliable queues live under `${DATA_DIR}/syslog-ng`. `SYSLOG_DISK_BUFFER_BYTES_PER_STREAM` is applied to each syslog-ng HTTP worker queue, not as one global or per-stream filesystem limit. Because `prealloc(yes)` reserves each queue immediately and old worker queues remain persistent, inspect the real allocation with `du -sh ${DATA_DIR}/syslog-ng/buffer`; the current four-worker deployment reserves about 25 GiB. Container logs are capped at 20 MiB × 5 files per container.
 
 Global OpenObserve retention is `ZO_COMPACT_DATA_RETENTION_DAYS=30`. Per-stream retention can later be set in the UI. The host, containers, and timezone-less syslog source default to `America/Toronto`, which follows EST/EDT automatically. OpenObserve stores parsed instants in UTC; `received_at` retains collector receipt time. An RFC5424/FortiGate timestamp containing an explicit offset wins over the collector default. Set each device's NTP and timezone correctly.
+
+The installer enables `logging-platform-storage-check.timer`, which checks the data filesystem every five minutes. Defaults are 75% warning and 85% critical through `STORAGE_WARNING_PERCENT` and `STORAGE_CRITICAL_PERCENT`. It writes only state transitions to syslog, exposes the current result in `status.sh`, and makes `healthcheck.sh` fail at warning/critical. It never deletes data or changes retention. Inspect it with `systemctl status logging-platform-storage-check.timer` and `journalctl -t logging-platform-storage`.
 
 ## Add or remove a device
 

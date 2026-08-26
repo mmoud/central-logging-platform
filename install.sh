@@ -114,8 +114,12 @@ configure_firewall_note() {
   fi
 }
 
+install_storage_guard() {
+  "$PLATFORM_DIR/scripts/install-storage-guard.sh"
+}
+
 main() {
-  require_root; check_host; install_docker; prepare_dirs; copy_package; create_env; configure_timezone; configure_firewall_note
+  require_root; check_host; install_docker; prepare_dirs; copy_package; create_env; configure_timezone; configure_firewall_note; install_storage_guard
   cd "$PLATFORM_DIR"
   ./scripts/validate.sh
   docker compose pull

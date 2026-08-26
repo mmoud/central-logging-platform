@@ -179,6 +179,11 @@ if [ "$update_docker" = yes ]; then
 fi
 
 ./scripts/validate.sh
+if [ "${EUID}" -eq 0 ]; then
+  ./scripts/install-storage-guard.sh
+else
+  echo 'Run sudo ./scripts/install-storage-guard.sh to refresh the storage timer.'
+fi
 dc pull
 dc up -d --remove-orphans=false
 ./scripts/healthcheck.sh --wait 180

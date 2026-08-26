@@ -1,0 +1,20 @@
+[Unit]
+Description=Central logging platform storage threshold check
+After=local-fs.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PLATFORM_DIR@
+ExecStart=@PLATFORM_DIR@/scripts/storage-check.sh --timer
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=@DATA_DIR@
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native

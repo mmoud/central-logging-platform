@@ -11,10 +11,19 @@ python3 scripts/render-syslog-config.py --enable-tls "${ENABLE_SYSLOG_TLS:-false
 python3 tests/test-dashboard-definitions.py
 python3 tests/test-gui-definitions.py
 python3 tests/test-alert-definitions.py
+tests/test-storage-check.sh
 
 for required in ZO_ROOT_USER_EMAIL ZO_ROOT_USER_PASSWORD DATA_DIR PLATFORM_TIMEZONE OPENOBSERVE_IMAGE SYSLOG_NG_IMAGE; do
   [ -n "${!required:-}" ] || { echo "Missing $required in .env" >&2; exit 2; }
 done
+storage_warning=${STORAGE_WARNING_PERCENT:-75}
+storage_critical=${STORAGE_CRITICAL_PERCENT:-85}
+[[ "$storage_warning" =~ ^[0-9]+$ && "$storage_critical" =~ ^[0-9]+$ ]] || {
+  echo 'Storage thresholds must be integers.' >&2; exit 2;
+}
+(( storage_warning >= 1 && storage_critical <= 99 && storage_warning < storage_critical )) || {
+  echo 'Storage thresholds must satisfy: 1 <= warning < critical <= 99.' >&2; exit 2;
+}
 [ "$(stat -c '%a' .env)" = 600 ] || { echo '.env must have mode 0600' >&2; exit 2; }
 for required_dir in "$DATA_DIR/openobserve" "$DATA_DIR/syslog-ng/buffer" "$DATA_DIR/syslog-ng/state"; do
   [ -d "$required_dir" ] || { echo "Missing required directory: $required_dir" >&2; exit 2; }

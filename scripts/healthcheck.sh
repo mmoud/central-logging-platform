@@ -15,4 +15,8 @@ until docker info >/dev/null 2>&1 \
 done
 dc exec -T syslog-ng syslog-ng -s -f /etc/syslog-ng/syslog-ng.conf
 curl -fsS "$(o2_url)/healthz" | jq -e '.status == "ok"' >/dev/null
+if ! ./scripts/storage-check.sh --check; then
+  echo 'Storage threshold check failed.' >&2
+  exit 1
+fi
 echo 'OpenObserve, syslog-ng, and Report Server are healthy.'

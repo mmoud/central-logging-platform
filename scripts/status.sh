@@ -18,6 +18,7 @@ for service in openobserve syslog-ng report-server; do
 done
 printf '\nDisk (%s)\n' "$DATA_DIR"
 df -h "$DATA_DIR" | awk 'NR==2 {printf "Used %-12s Free %s\n", $3, $4}'
+./scripts/storage-check.sh --status
 printf '\nOpenObserve retention  %s days\n' "$ZO_COMPACT_DATA_RETENTION_DAYS"
 printf 'Platform timezone      %s\n' "${PLATFORM_TIMEZONE:-America/Toronto}"
 listener_status() {
