@@ -44,6 +44,7 @@ def validate_dashboard(body: dict, expected_panels: int, period: str,
         assert f"${extra}" in all_queries
 
     for panel in panels:
+        assert panel["type"] in {"metric", "line", "bar", "h-bar", "donut", "table"}
         query = panel["queries"][0]
         fields = query["fields"]
         axes = fields["x"] + fields["y"]
@@ -63,6 +64,32 @@ def validate_dashboard(body: dict, expected_panels: int, period: str,
             assert len(fields["x"]) == 1
             assert fields["y"]
             assert all(item["aggregationFunction"] is None for item in fields["y"])
+        if panel["type"] == "h-bar":
+            assert panel["layout"]["h"] == 12
+
+
+def validate_visualization_choices(dashboards: list[dict]) -> None:
+    """Guard the deliberate chart choices for ranked and identity-heavy data."""
+    by_title = {
+        panel["title"]: panel["type"]
+        for body in dashboards
+        for tab in body["tabs"]
+        for panel in tab["panels"]
+    }
+    horizontal_rankings = {
+        "Top Header Sender Domains", "Top Envelope Sender Domains", "Top Source IPs",
+        "Top Destination IPs", "Top Policies", "Attack Signatures", "Top Applications",
+        "Top IPS Signatures", "Top Requested Hosts", "Top URLs", "Top Interfaces",
+        "Top Administrative Users", "Top VM IDs", "Top Container IDs", "Top Programs",
+        "Top Unknown Source IPs", "Top Reported Hostnames", "Errors by Unknown Source",
+    }
+    identity_tables = {
+        "Real Sender Addresses", "Envelope Senders / Return-Path", "Header Recipients",
+        "Envelope Recipients", "Relay Destinations", "Reject Reasons", "TLS Ciphers",
+        "Matching Messages", "PMG to Ubersmith Message Correlation",
+    }
+    assert all(by_title[title] == "h-bar" for title in horizontal_rankings)
+    assert all(by_title[title] == "table" for title in identity_tables)
 
 
 def validate_bootstrap_exclusion(body: dict) -> None:
@@ -139,9 +166,12 @@ def main() -> int:
     validate_bootstrap_exclusion(pmg["pmg-investigation"])
     validate_pmg_bootstrap()
     validate_ubersmith_bootstrap()
-    validate_dashboard(MODULE.fortigate_dashboard(), 70, "24h")
-    validate_dashboard(MODULE.juniper_dashboard(), 30, "24h")
-    validate_dashboard(MODULE.proxmox_ve_dashboard(), 32, "24h", "source")
+    fortigate = MODULE.fortigate_dashboard()
+    juniper = MODULE.juniper_dashboard()
+    proxmox_ve = MODULE.proxmox_ve_dashboard()
+    validate_dashboard(fortigate, 70, "24h")
+    validate_dashboard(juniper, 30, "24h")
+    validate_dashboard(proxmox_ve, 32, "24h", "source")
     ubersmith = MODULE.ubersmith_dashboard()
     ubersmith_mail = MODULE.ubersmith_mail_dashboard()
     validate_dashboard(ubersmith, 24, "24h")
@@ -149,8 +179,14 @@ def main() -> int:
                        extra_variables=("sender", "recipient"))
     validate_bootstrap_exclusion(ubersmith)
     validate_bootstrap_exclusion(ubersmith_mail)
-    validate_dashboard(MODULE.unclassified_dashboard(), 24, "24h", "source")
-    validate_dashboard(MODULE.central_overview_dashboard(), 22, "24h", None)
+    unclassified = MODULE.unclassified_dashboard()
+    overview = MODULE.central_overview_dashboard()
+    validate_dashboard(unclassified, 24, "24h", "source")
+    validate_dashboard(overview, 22, "24h", None)
+    validate_visualization_choices([
+        pmg["pmg-reporting"], pmg["pmg-investigation"], fortigate, juniper, proxmox_ve,
+        ubersmith, ubersmith_mail, unclassified, overview,
+    ])
     print("Dashboard definitions passed (266 panels).")
     return 0
 

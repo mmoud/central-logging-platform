@@ -25,6 +25,23 @@ PMG Message Investigation and PMG to Ubersmith Mail Handoff have free-form
 sender and recipient inputs for message, Message-ID and Postfix queue
 correlation.
 
+## Visualization conventions
+
+The bundled dashboards use a consistent visualization model:
+
+- metric panels for one current count or timestamp;
+- line charts only for values changing over time;
+- horizontal bars for ranked top-N comparisons so long host, policy, signature,
+  URL, user, interface and IP labels remain readable;
+- vertical bars for compact categorical comparisons such as HTTP methods, log
+  types and routing protocols;
+- donut charts only for low-cardinality part-to-whole breakdowns;
+- tables for exact identities, raw/detail events, correlations and values that
+  analysts commonly copy into an investigation.
+
+This keeps charts useful for comparison without turning sender, recipient,
+relay, rule, cipher, reason or correlation data into unreadable axis labels.
+
 ## Saved investigation views
 
 `scripts/provision-gui.py` owns 12 saved views for denied FortiGate traffic,
