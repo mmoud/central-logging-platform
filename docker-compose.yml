@@ -67,24 +67,40 @@ services:
       options: {max-size: "20m", max-file: "5"}
 
   report-server:
-    profiles: [reports]
     image: ${REPORT_SERVER_IMAGE:?set REPORT_SERVER_IMAGE in .env}
     container_name: logging-platform-report-server
     restart: unless-stopped
+    depends_on:
+      openobserve:
+        condition: service_started
     environment:
       TZ: ${PLATFORM_TIMEZONE:-America/Toronto}
       ZO_REPORT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:?set ZO_ROOT_USER_EMAIL in .env}
       ZO_REPORT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?set ZO_ROOT_USER_PASSWORD in .env}
       ZO_HTTP_ADDR: 0.0.0.0
       ZO_HTTP_PORT: "5090"
-      ZO_SMTP_HOST: ${ZO_SMTP_HOST:-}
-      ZO_SMTP_PORT: ${ZO_SMTP_PORT:-}
+      # The upstream binary parses SMTP port at startup even when a cached
+      # report has no destinations. These localhost defaults satisfy startup
+      # but provide no external delivery route.
+      ZO_SMTP_HOST: ${ZO_SMTP_HOST:-localhost}
+      ZO_SMTP_PORT: ${ZO_SMTP_PORT:-25}
       ZO_SMTP_USER_NAME: ${ZO_SMTP_USER_NAME:-}
       ZO_SMTP_PASSWORD: ${ZO_SMTP_PASSWORD:-}
-      ZO_SMTP_FROM_EMAIL: ${ZO_SMTP_FROM_EMAIL:-}
+      ZO_SMTP_FROM_EMAIL: ${ZO_SMTP_FROM_EMAIL:-noreply@localhost}
       ZO_SMTP_ENCRYPTION: ${ZO_SMTP_ENCRYPTION:-}
+      # Required by Chromium in the official root-running Docker image. The
+      # container remains unprivileged, internal-only, and has no host mounts.
+      ZO_CHROME_NO_SANDBOX: "true"
     networks: [logging]
     shm_size: 1gb
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "grep -aq report-generator /proc/1/cmdline"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     logging:
       driver: json-file
       options: {max-size: "20m", max-file: "5"}

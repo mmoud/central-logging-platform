@@ -51,17 +51,26 @@ cd /opt/logging-platform
 Use `--validate-only` to execute every saved-view query without changing GUI
 objects. `--skip-stream-settings` and `--skip-reports` provide narrower runs.
 
-## Prepared reports
+## Cached reports
 
-Four report templates are created disabled: daily PMG, weekly FortiGate,
-weekly infrastructure, and weekly unknown-source reporting. They intentionally
-have no destination. Before enabling one:
+Four cached reports are active: daily PMG, weekly FortiGate, weekly
+infrastructure, and weekly unknown-source reporting. They intentionally have no
+destinations and therefore cannot send email. The internal Report Server keeps
+each dashboard's curated overview tab warm for quick access through **Reports
+→ Cached** and the dashboard's report list. Detailed tabs continue to run live
+when selected.
 
-1. Configure SMTP values in `.env` and enable the `reports` Compose profile.
-2. Start and health-check the report server.
-3. Create and test an OpenObserve email destination.
-4. Attach the tested destination to the template.
-5. Review its tabs, local `America/Toronto` schedule, and recipients, then
-   enable it.
+Cached reports are not a durable PDF archive. OpenObserve stores report
+definitions and query/render cache data, while the source logs remain governed
+by the normal 30-day retention. If a point-in-time artifact must be retained,
+export it deliberately and place it in an administrator-managed backup or
+records system.
+
+SMTP is optional and disabled. Before adding email delivery later:
+
+1. Configure SMTP values in `.env`.
+2. Create and test recipients on a non-cached scheduled report.
+3. Review its tabs, local `America/Toronto` schedule, and recipients before
+   enabling external delivery.
 
 No alerts are provisioned at this stage.

@@ -10,6 +10,7 @@ Verified 2026-08-26. Prefer these upstream sources when changing the package.
 - [OpenObserve storage modes](https://openobserve.ai/docs/administration/maintenance/storage-management/storage/)
 - [OpenObserve Report Server repository](https://github.com/openobserve/o2_report_server)
 - [OpenObserve Report Server setup](https://openobserve.ai/blog/openobserve-report-server-set-up/)
+- [OpenObserve reports overview (scheduled and cached reports)](https://openobserve.ai/docs/user-guide/analytics/reports/)
 - [OpenObserve dashboard API](https://api.openobserve.ai/swagger/index.html)
 - [OpenObserve dashboard documentation](https://openobserve.ai/docs/user-guide/analytics/dashboards/)
 - [OpenObserve streaming search](https://openobserve.ai/docs/user-guide/account-administration/management/streaming-search/)

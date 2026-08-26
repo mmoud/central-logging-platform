@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision OpenObserve saved views, disabled reports, and safe stream settings."""
+"""Provision OpenObserve saved views, cached reports, and safe stream settings."""
 from __future__ import annotations
 
 import argparse
@@ -234,7 +234,7 @@ def ensure_folder(base: str, org: str, user: str, password: str, folder_type: st
 
 
 def provision_reports(base: str, org: str, user: str, password: str) -> None:
-    """Create disabled destination-less templates; they cannot send until configured."""
+    """Create active destination-less cached reports; they never send email."""
     encoded_org = urllib.parse.quote(org, safe="")
     by_title = {}
     for _name, _folder, dashboard_title, _period, _freq_type, _interval in REPORTS:
@@ -248,17 +248,19 @@ def provision_reports(base: str, org: str, user: str, password: str) -> None:
     existing_list = api_request(base, path, user, password)
     existing = {item.get("name"): item for item in existing_list}
     folder_id = ensure_folder(base, org, user, password, "reports", "Prepared Reports",
-                              "Disabled templates awaiting SMTP and report-server enablement.")
+                              "Destination-less cached dashboard reports; no email is sent.")
     for name, _dashboard_folder, dashboard_title, period, freq_type, interval in REPORTS:
         item = by_title.get(dashboard_title)
         if not item:
             raise RuntimeError(f"report dashboard not found: {dashboard_title}")
         dashboard_body = item.get("v5") or {}
         body = {
-            "name": name, "orgId": org, "folderId": folder_id, "enabled": False,
+            "name": name, "orgId": org, "folderId": folder_id, "enabled": True,
             "dashboards": [{
                 "dashboard": item["dashboard_id"], "folder": item["folder_id"],
-                "tabs": [tab["tabId"] for tab in dashboard_body.get("tabs", [])],
+                # Cached reports warm one dashboard tab. Use the curated
+                # overview tab; detailed tabs remain available live in the UI.
+                "tabs": [dashboard_body["tabs"][0]["tabId"]],
                 "attachment_dimensions": None, "email_attachment_type": "standard",
                 "report_type": "pdf",
                 "timerange": {"type": "relative", "period": period, "from": 0, "to": 0},
@@ -269,16 +271,16 @@ def provision_reports(base: str, org: str, user: str, password: str) -> None:
                           "type": freq_type},
             "timezone": os.environ.get("PLATFORM_TIMEZONE", "America/Toronto"),
             "title": name.replace("-", " "),
-            "message": "Prepared by the central logging platform; configure a tested destination before enabling.",
+            "message": "Cached dashboard report; no email destination is configured.",
         }
         report = existing.get(name)
         if report:
             report_id = urllib.parse.quote(str(report.get("id") or report.get("report_id")), safe="")
             api_request(base, f"{path}/{report_id}", user, password, "PUT", body)
-            print(f"updated disabled report template: {name}")
+            print(f"updated cached report: {name}")
         else:
             api_request(base, path, user, password, "POST", body)
-            print(f"created disabled report template: {name}")
+            print(f"created cached report: {name}")
 
 
 def main() -> int:

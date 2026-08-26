@@ -35,7 +35,7 @@ def main() -> int:
         assert settings["index_fields"]
         assert settings["bloom_filter_fields"]
     assert len(MODULE.REPORTS) == 4
-    print("GUI definitions passed (12 saved views, 4 disabled reports, 6 tuned streams).")
+    print("GUI definitions passed (12 saved views, 4 cached reports, 6 tuned streams).")
     return 0
 
 
