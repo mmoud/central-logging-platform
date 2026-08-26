@@ -1,0 +1,5 @@
+<22>Aug 26 10:30:01 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: new mail message-id=<original@example.com>
+<22>Aug 26 10:30:01 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: mail-headers envelope-from=<bounces+SRS=abc=example.org=user@example.net> envelope-to=<billing@example.net> from="Original Sender <user@example.org>" to="Example Billing <billing@example.net>" subject="Quarterly invoice 12345"
+<22>Aug 26 10:30:02 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: accept mail to <billing@example.net> (4F6A912345) (rule: default-accept)
+<22>Aug 26 10:30:03 sfilter pmg-smtp-filter[2201]: 9F8E7D6C5B: moved mail for <user@example.net> to spam quarantine - 67ab12cd (rule: Quarantine/Mark Spam (Level 3))
+<22>Aug 26 10:30:04 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: processing time: 0.421 seconds (0.200, 0.010, 0)

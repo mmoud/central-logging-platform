@@ -39,12 +39,36 @@ after deploying a company-trusted collector certificate. PMG retains its local
 log destinations; the dedicated linked-list action queue prevents a collector
 outage from blocking them and spills up to 1 GiB to `/var/spool/rsyslog`.
 
-Postfix emits multiple events per message. The collector extracts `mail.queue_id`
-and correlates records at query time; it does not fabricate a merged event.
-Fields include sender and recipient/domain, relay and destination IP, source
-host/IP, message ID and size, SMTP response/DSN/status, delay stages, rejection,
-spam and virus indicators when present. Every record retains `raw_message` and
-unmatched PMG messages are still ingested.
+Postfix emits multiple events per message. The collector keeps the PMG filter ID,
+RFC Message-ID, linked Postfix queue ID, and individual Postfix queue IDs as
+different fields and correlates records at query time; it does not fabricate a
+merged event. This avoids counting one mail several times merely because it had
+an inbound queue hop, filtering pass, and outbound queue hop.
+
+PMG 9.1 or newer can log a dedicated, decoded header summary. Enable it with:
+
+```bash
+pmgsh set /config/mail --log-headers 1
+pmgsh get /config/mail
+```
+
+The resulting PMG event includes the SMTP envelope sender/recipients and the
+message's decoded `From`, `To`, and `Subject` headers. The collector stores these
+as separate `mail.envelope_*` and `mail.header_*` fields. This distinction is
+especially important for Microsoft 365 forwarding because Sender Rewriting
+Scheme (SRS) can rewrite the envelope sender while leaving the visible `From`
+header unchanged.
+
+Header logging has a privacy and data-volume cost: subject lines and display
+names become searchable log data and follow the OpenObserve retention policy.
+Enable it only when that is acceptable under the organization's mail and privacy
+policy. Disable it with `pmgsh set /config/mail --log-headers 0`.
+
+Other extracted fields include sender and recipient domains, PMG rule and
+filter action, quarantine ID, relay and destination IP, source host/IP, message
+size, SMTP response/DSN/status, delay stages, rejection, spam, and virus
+indicators when present. Every record retains `raw_message` and unmatched PMG
+messages are still ingested.
 
 Create or update the bundled mail dashboard through OpenObserve's supported API:
 
@@ -55,7 +79,10 @@ cd /opt/logging-platform
 
 The **PMG Mail Reporting** dashboard uses focused tabs for overview, volume and
 components, recent mail, senders and recipients, routing and SMTP, delivery,
-filtering, queue-ID trace, and raw events. It covers volume, delivery outcomes,
-senders/recipients/domains, relays, source IPs, size, delay, DSN, SMTP response,
-spam, malware, rejects, deferrals, and queue-ID investigation. Keeping each tab
-small also prevents duplicate lazy-loaded query results in current OpenObserve.
+filtering, queue-ID trace, and raw events. Mail volume is counted by PMG filter
+ID—not Postfix queue hop. Original/header sender, envelope sender, header
+recipient, and envelope recipient are clearly labelled and reported separately.
+It also covers PMG rules/actions, delivery outcomes, domains, relays, source IPs,
+size, delay, DSN, SMTP response, spam, malware, rejects, deferrals, and queue-ID
+investigation. Keeping each tab small also prevents duplicate lazy-loaded query
+results in current OpenObserve.

@@ -46,10 +46,22 @@ assert_field 'PROXMOX .*"source_ip":"10.0.0.20"'
 assert_field 'PROXMOX .*"upid":"UPID:pve01:'
 assert_field 'PROXMOX .*"task":"qmstart"'
 assert_field 'PROXMOX .*"vmid":"101"'
+assert_field 'PMG .*"filter_id":"1A2B3C4D5E"'
+assert_field 'PMG .*"message_id":"original@example.com"'
+assert_field 'PMG .*"envelope_sender":"bounces\+SRS=abc=example.org=user@example.net"'
+assert_field 'PMG .*"header_from":"Original Sender <user@example.org>"'
+assert_field 'PMG .*"header_sender_domain":"example.org"'
+assert_field 'PMG .*"header_recipient_domain":"example.net"'
+assert_field 'PMG .*"envelope_recipient_domain":"example.net"'
+assert_field 'PMG .*"subject":"Quarterly invoice 12345"'
+assert_field 'PMG .*"linked_queue_id":"4F6A912345"'
+assert_field 'PMG .*"rule":"default-accept"'
+assert_field 'PMG .*"filter_action":"spam quarantine"'
+assert_field 'PMG .*"rule":"Quarantine/Mark Spam \(Level 3\)"'
 if grep -E 'PROXMOX .*"PROGRAM":"systemd"' "$output" | grep -q 'authentication_result'; then
   echo 'A systemd service failure was incorrectly classified as an authentication result.' >&2
   cat "$output" >&2
   exit 1
 fi
 
-echo 'Juniper and Proxmox VE parser samples passed.'
+echo 'Juniper, Proxmox VE, and PMG parser samples passed.'
