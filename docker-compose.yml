@@ -4,6 +4,7 @@ services:
     container_name: logging-platform-openobserve
     restart: unless-stopped
     environment:
+      TZ: ${PLATFORM_TIMEZONE:-America/Toronto}
       ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:?set ZO_ROOT_USER_EMAIL in .env}
       ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?set ZO_ROOT_USER_PASSWORD in .env}
       ZO_DATA_DIR: /data
@@ -36,6 +37,7 @@ services:
       openobserve:
         condition: service_started
     environment:
+      TZ: ${PLATFORM_TIMEZONE:-America/Toronto}
       ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:?set ZO_ROOT_USER_EMAIL in .env}
       ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?set ZO_ROOT_USER_PASSWORD in .env}
       ZO_ORG: ${ZO_ORG:-default}
@@ -70,6 +72,7 @@ services:
     container_name: logging-platform-report-server
     restart: unless-stopped
     environment:
+      TZ: ${PLATFORM_TIMEZONE:-America/Toronto}
       ZO_REPORT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:?set ZO_ROOT_USER_EMAIL in .env}
       ZO_REPORT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?set ZO_ROOT_USER_PASSWORD in .env}
       ZO_HTTP_ADDR: 0.0.0.0

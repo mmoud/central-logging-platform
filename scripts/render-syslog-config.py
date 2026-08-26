@@ -8,6 +8,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
@@ -59,12 +60,12 @@ def load_devices(path: Path) -> list[dict[str, str]]:
 def source_conf(enable_tls: bool) -> str:
     entries = [
         'source s_network {',
-        '    network(ip("0.0.0.0") port(514) transport("udp") flags(store-raw-message));',
-        '    network(ip("0.0.0.0") port(514) transport("tcp") max-connections(200) flags(store-raw-message));',
+        '    syslog(ip("0.0.0.0") port(514) transport("udp") flags(store-raw-message));',
+        '    syslog(ip("0.0.0.0") port(514) transport("tcp") max-connections(200) flags(store-raw-message));',
     ]
     if enable_tls:
         entries.extend([
-            '    network(ip("0.0.0.0") port(6514) transport("tls") max-connections(200) flags(store-raw-message)',
+            '    syslog(ip("0.0.0.0") port(6514) transport("tls") max-connections(200) flags(store-raw-message)',
             '        tls(key-file("/etc/syslog-ng/tls/server.key") cert-file("/etc/syslog-ng/tls/server.crt") ca-dir("/etc/syslog-ng/tls/ca") peer-verify(optional-untrusted)));',
         ])
     entries += ['};', '']
@@ -79,7 +80,7 @@ def route_conf(devices: list[dict[str, str]]) -> str:
         filters.append(f"f_{ident}")
         parsers = ""
         if dev["stream"] == "fortigate":
-            parsers = "parser(p_fortigate_kv); "
+            parsers = "parser(p_fortigate_payload); parser(p_fortigate_kv); rewrite(r_fortigate_normalized); "
         elif dev["stream"] == "proxmox_mail_gateway":
             parsers = (
                 "parser(p_mail_queue_id); parser(p_mail_sender); parser(p_mail_recipient); "
@@ -125,11 +126,21 @@ def runtime_conf() -> str:
     password = os.environ.get("ZO_ROOT_USER_PASSWORD", "")
     if not user or not password:
         raise ValueError("ZO_ROOT_USER_EMAIL and ZO_ROOT_USER_PASSWORD must be set to render syslog-ng credentials")
+    source_time_zone = os.environ.get("PLATFORM_TIMEZONE", "America/Toronto")
+    try:
+        ZoneInfo(source_time_zone)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError(f"PLATFORM_TIMEZONE is not a valid IANA timezone: {source_time_zone}") from exc
     safe_user = q(user)
     safe_password = q(password)
+    safe_time_zone = q(source_time_zone)
     lines = ["# Generated runtime settings. Contains credentials; mode 0640 and Git ignored."]
     lines.extend(f"@define {key} {value}" for key, value in values.items())
-    lines.extend([f'@define ZO_HTTP_USER "{safe_user}"', f'@define ZO_HTTP_PASSWORD "{safe_password}"'])
+    lines.extend([
+        f'@define SOURCE_TIME_ZONE "{safe_time_zone}"',
+        f'@define ZO_HTTP_USER "{safe_user}"',
+        f'@define ZO_HTTP_PASSWORD "{safe_password}"',
+    ])
     return "\n".join(lines) + "\n"
 
 

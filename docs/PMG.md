@@ -5,20 +5,15 @@ Modern PMG releases use rsyslog. Create `/etc/rsyslog.d/60-openobserve.conf`
 on the PMG host, replacing `COLLECTOR_IP`:
 
 ```rsyslog
-# RFC3164 does not carry a timezone. Convert the reported timestamp to UTC
-# before forwarding so the collector does not have to guess the device zone.
-template(
-    name="OpenObserveRFC3164UTC"
-    type="string"
-    string="<%PRI%>%TIMESTAMP:::date-rfc3164,date-utc% %HOSTNAME% %syslogtag:1:32%%msg:::sp-if-no-1st-sp%%msg:::drop-last-lf%\n"
-)
-
+# RFC5424 includes an RFC3339 timestamp and explicit UTC offset. This avoids
+# ambiguous RFC3164 timestamps and preserves correct EST/EDT conversion.
 action(
     type="omfwd"
     target="COLLECTOR_IP"
     port="514"
     protocol="tcp"
-    template="OpenObserveRFC3164UTC"
+    TCP_Framing="octet-counted"
+    template="RSYSLOG_SyslogProtocol23Format"
     action.resumeRetryCount="-1"
     queue.type="LinkedList"
     queue.filename="openobserve_fwd"
@@ -39,7 +34,7 @@ systemctl is-active rsyslog
 logger -p mail.info -t openobserve-pmg-test "PMG forwarding test"
 ```
 
-TCP/514 is recommended on a trusted management network. Use TCP/TLS/6514
+TCP/514 with RFC5424 is recommended on a trusted management network. Use TCP/TLS/6514
 after deploying a company-trusted collector certificate. PMG retains its local
 log destinations; the dedicated linked-list action queue prevents a collector
 outage from blocking them and spills up to 1 GiB to `/var/spool/rsyslog`.

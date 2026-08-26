@@ -89,7 +89,22 @@ create_env() {
     chmod 0600 "$PLATFORM_DIR/.env"
     INITIAL_PASSWORD=$password
   fi
+  if ! grep -q '^PLATFORM_TIMEZONE=' "$PLATFORM_DIR/.env"; then
+    printf '\nPLATFORM_TIMEZONE=America/Toronto\n' >>"$PLATFORM_DIR/.env"
+  fi
   chmod 0600 "$PLATFORM_DIR/.env"
+}
+
+configure_timezone() {
+  local configured_timezone current_timezone
+  configured_timezone=$(sed -n 's/^PLATFORM_TIMEZONE=//p' "$PLATFORM_DIR/.env" | tail -n 1)
+  [ -n "$configured_timezone" ] || die 'PLATFORM_TIMEZONE must be set in .env.'
+  timedatectl list-timezones | grep -Fx "$configured_timezone" >/dev/null || die "Invalid IANA timezone: $configured_timezone"
+  current_timezone=$(timedatectl show --property=Timezone --value)
+  if [ "$current_timezone" != "$configured_timezone" ]; then
+    timedatectl set-timezone "$configured_timezone"
+    note "Host timezone set to $configured_timezone."
+  fi
 }
 
 configure_firewall_note() {
@@ -99,7 +114,7 @@ configure_firewall_note() {
 }
 
 main() {
-  require_root; check_host; install_docker; prepare_dirs; copy_package; create_env; configure_firewall_note
+  require_root; check_host; install_docker; prepare_dirs; copy_package; create_env; configure_timezone; configure_firewall_note
   cd "$PLATFORM_DIR"
   ./scripts/validate.sh
   docker compose pull
@@ -119,6 +134,7 @@ Syslog UDP:  $(hostname -I | awk '{print $1}'):514
 Syslog TCP:  $(hostname -I | awk '{print $1}'):514
 Syslog TLS:  $(hostname -I | awk '{print $1}'):6514 (enable after generating/configuring a certificate)
 Retention:   ${ZO_COMPACT_DATA_RETENTION_DAYS} days
+Timezone:    ${PLATFORM_TIMEZONE} (Eastern Time; stored timestamps remain UTC)
 Configuration: ${PLATFORM_DIR}
 Data:          ${DATA_DIR}
 

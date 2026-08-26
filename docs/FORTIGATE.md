@@ -14,4 +14,21 @@ config log syslogd setting
 end
 ```
 
-For TLS, configure the collector CA/certificate trust on the appliance and use TCP/6514 only after `ENABLE_SYSLOG_TLS=true`. The package parses FortiGate `key=value` messages conservatively and preserves all parsed `fortigate.*` keys (including `vd`/`vdom`), raw text, device/source IP, and normalized syslog fields. Enable event/system/security/VPN/admin/HA/routing as needed; enable traffic and UTM selectively since session logging drives retention volume.
+For TLS, configure the collector CA/certificate trust on the appliance and use TCP/6514 only after `ENABLE_SYSLOG_TLS=true`. The package parses FortiGate `key=value` messages conservatively and preserves every parsed `fortigate.*` key (including `vd`/`vdom`), raw text, device/source IP, and normalized syslog fields.
+
+## Licensed security profiles (UTM)
+
+The bundled dashboard has dedicated views for:
+
+- Application Control: application ID/name/category/risk, profile, action, user, host and URL.
+- IPS and anomaly detection: signature/attack ID, severity, action, incident, source/destination, policy and VDOM.
+- Web and DNS filtering: hostname, URL, HTTP method, action, user, policy and content-risk fields when supplied.
+- Antivirus, file filtering, DLP, email filtering, SSL inspection, WAF, CASB and virtual-patch event families.
+
+FortiOS schemas vary by release and licensed profile. The generic key/value parser retains fields that are not yet named in a dashboard, and every event keeps `raw_message`; a new field therefore does not require a collector parser change. The dashboard only counts a security family after the FortiGate actually emits those logs.
+
+Apply the desired security profiles to policies and enable logging for the profile/event types you need. UTM inspection and policy traffic logging are separate decisions: a license alone does not cause every event to be sent. Application-control and web/DNS logs can be high volume, so monitor `/opt/logging-data` after enabling them. Prefer `utm`/security events plus policy violations initially, then add allowed-session logging only where reporting requires it.
+
+FortiGate includes `tz` and nanosecond `eventtime` on its native key/value records. They are preserved as `event_timezone` and `event_timestamp` alongside the collector's `received_at`. For syslog headers without an offset, `America/Toronto` is the default receive timezone, following EST/EDT automatically.
+
+If logs are relayed by FortiAnalyzer, see [FortiManager and FortiAnalyzer](FORTIMANAGER.md). Direct FortiGate forwarding best preserves the network sender IP; relayed logs retain FortiOS `devname`, `devid`, and `vd` for device/VDOM attribution.

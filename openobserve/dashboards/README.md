@@ -16,6 +16,11 @@ OpenObserve time range. PMG records are correlated at query time by
 `mail_queue_id`; the collector does not incorrectly merge separate Postfix
 events into one synthetic message.
 
+The FortiGate definition includes 70 panels covering traffic, VDOMs, VPN,
+administration, HA, routing, application control, IPS, web/DNS filtering,
+antivirus/file filtering, DLP, email filtering, SSL, WAF, CASB, anomalies and
+virtual-patch events. FortiOS fields not used by a panel remain searchable.
+
 Panels are intentionally distributed across focused tabs. Current OpenObserve
 can execute a large tab's below-the-fold panels twice as they enter the viewport;
 small tabs keep aggregate counts and limited tables accurate while retaining the

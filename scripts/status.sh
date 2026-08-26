@@ -19,6 +19,7 @@ done
 printf '\nDisk (%s)\n' "$DATA_DIR"
 df -h "$DATA_DIR" | awk 'NR==2 {printf "Used %-12s Free %s\n", $3, $4}'
 printf '\nOpenObserve retention  %s days\n' "$ZO_COMPACT_DATA_RETENTION_DAYS"
+printf 'Platform timezone      %s\n' "${PLATFORM_TIMEZONE:-America/Toronto}"
 listener_status() {
   local label=$1 options=$2 port=$3
   if ss -H "$options" "( sport = :$port )" 2>/dev/null | grep -q .; then

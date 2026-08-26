@@ -40,7 +40,7 @@ OpenObserve starts on HTTP `http://SERVER:5080`; put a TLS reverse proxy in fron
 
 OpenObserve data, SQLite metadata, WAL, and stream data live under `${DATA_DIR}/openobserve`. syslog-ng state and reliable queues live under `${DATA_DIR}/syslog-ng`. The default 1 GiB durable buffer per supplied stream reserves 7 GiB because `prealloc(yes)` is intentionally used; adjust `SYSLOG_DISK_BUFFER_BYTES_PER_STREAM` in `.env` to fit the disk. Container logs are capped at 20 MiB × 5 files per container.
 
-Global OpenObserve retention is `ZO_COMPACT_DATA_RETENTION_DAYS=30`. Per-stream retention can later be set in the UI. Timestamps use the device event timestamp when supplied by syslog-ng, normalized to ISO UTC; `received_at` retains collector receipt time. Devices that omit a timezone cannot be inferred reliably—set their time/NTP and timezone correctly.
+Global OpenObserve retention is `ZO_COMPACT_DATA_RETENTION_DAYS=30`. Per-stream retention can later be set in the UI. The host, containers, and timezone-less syslog source default to `America/Toronto`, which follows EST/EDT automatically. OpenObserve stores parsed instants in UTC; `received_at` retains collector receipt time. An RFC5424/FortiGate timestamp containing an explicit offset wins over the collector default. Set each device's NTP and timezone correctly.
 
 ## Add or remove a device
 
@@ -53,9 +53,9 @@ editor config/sources.yml
 ./scripts/validate.sh && docker compose up -d syslog-ng
 ```
 
-The mapping—not fragile content guessing—selects `fortigate`, `cisco`, `juniper`, `proxmox_ve`, `proxmox_mail_gateway`, or `linux`. Unmapped source IPs always go to `unclassified`. Every record includes `raw_message`, `source.ip`, syslog fields, timestamps, normalized observer/device fields, and stream. FortiGate key/value fields are additionally kept as `fortigate.*`; no parser failure discards a message.
+The mapping—not fragile content guessing—selects `fortigate`, `cisco`, `juniper`, `proxmox_ve`, `proxmox_mail_gateway`, or `linux`. Unmapped source IPs always go to `unclassified`. The current syslog source natively accepts RFC3164 and RFC5424. Every record includes `raw_message`, `source.ip`, syslog fields, timestamps, normalized observer/device fields, and stream. FortiGate key/value fields are parsed from the preserved frame and kept as `fortigate.*`; no parser failure discards a message.
 
-The parsers deliberately remain conservative. FortiGate key/value fields and common PMG/Postfix mail fields are extracted while parser non-matches remain valid events. PMG records retain queue IDs for query-time correlation rather than fabricating cross-event mail joins. Cisco and Junos event identifiers and standard Linux program/PID remain searchable in normalized syslog fields and the raw record.
+The parsers deliberately remain conservative. Every FortiGate key/value field is retained, including application control, IPS, antivirus, web/DNS filter, DLP, SSL, WAF and related UTM fields, while parser non-matches remain valid events. PMG records retain queue IDs for query-time correlation rather than fabricating cross-event mail joins. Cisco and Junos event identifiers and standard Linux program/PID remain searchable in normalized syslog fields and the raw record.
 
 ## Operations
 
@@ -90,8 +90,8 @@ For production, replace `syslog-ng/tls/server.key`, `server.crt`, and the trust 
 
 Reports are available through the upstream Report Server image, but disabled by default so absent SMTP cannot impede collection. Set `COMPOSE_PROFILES=reports`, populate SMTP variables in `.env`, then run `docker compose up -d`. It stays internal to the Compose network. OpenObserve OSS dashboards, search and alerts are available; this package does not install the Enterprise edition.
 
-Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **PMG Mail Reporting** and **FortiGate Security & Traffic** dashboards through OpenObserve's supported API. The version-controlled dashboard definitions are documented under `openobserve/dashboards/`. Useful additional saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Never manipulate OpenObserve SQLite directly.
+Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **PMG Mail Reporting** and **FortiGate Security & Traffic** dashboards through OpenObserve's supported API. The FortiGate dashboard includes dedicated UTM, application-control, IPS, web/DNS filtering and content-security tabs. The version-controlled definitions are documented under `openobserve/dashboards/`. Useful additional saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Never manipulate OpenObserve SQLite directly.
 
 ## Source guidance and limits
 
-Use TCP where a device supports it, and TLS only after certificates are deployed. Traffic/session logging can consume substantially more than 250 GB/month; selectively enable FortiGate traffic and UTM logs based on troubleshooting needs. See [FortiGate](docs/FORTIGATE.md), [Cisco](docs/CISCO.md), [Juniper](docs/JUNIPER.md), [Proxmox VE](docs/PROXMOX-VE.md), [PMG](docs/PMG.md), and [Linux](docs/LINUX.md). Upstream source links and exact capabilities are recorded in [docs/REFERENCES.md](docs/REFERENCES.md).
+Use TCP where a device supports it, and TLS only after certificates are deployed. Traffic/session logging can consume substantially more than 250 GB/month; selectively enable FortiGate traffic and UTM logs based on troubleshooting needs. See [FortiGate](docs/FORTIGATE.md), [FortiManager/FortiAnalyzer](docs/FORTIMANAGER.md), [Cisco](docs/CISCO.md), [Juniper](docs/JUNIPER.md), [Proxmox VE](docs/PROXMOX-VE.md), [PMG](docs/PMG.md), and [Linux](docs/LINUX.md). Upstream source links and exact capabilities are recorded in [docs/REFERENCES.md](docs/REFERENCES.md).

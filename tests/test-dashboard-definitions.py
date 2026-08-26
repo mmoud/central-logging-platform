@@ -45,8 +45,8 @@ def validate_dashboard(body: dict, expected_panels: int) -> None:
 
 def main() -> int:
     validate_dashboard(MODULE.pmg_dashboard(), 30)
-    validate_dashboard(MODULE.fortigate_dashboard(), 36)
-    print("Dashboard definitions passed (66 panels).")
+    validate_dashboard(MODULE.fortigate_dashboard(), 70)
+    print("Dashboard definitions passed (100 panels).")
     return 0
 
 
