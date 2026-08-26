@@ -513,6 +513,55 @@ def ubersmith_dashboard() -> dict:
     ])
 
 
+def unclassified_dashboard() -> dict:
+    """Discovery reporting for every source not yet mapped by an administrator."""
+    s = '"unclassified"'
+    overview = [
+        ("Unclassified Events", "metric", f"SELECT count(*) AS value FROM {s}", [], [("Events", "value")]),
+        ("Unknown Source IPs", "metric", f"SELECT count(DISTINCT source_ip) AS value FROM {s} WHERE source_ip IS NOT NULL", [], [("Sources", "value")]),
+        ("Reported Hostnames", "metric", f"SELECT count(DISTINCT host_name) AS value FROM {s} WHERE host_name IS NOT NULL", [], [("Hostnames", "value")]),
+        ("Programs Detected", "metric", f"SELECT count(DISTINCT syslog_program) AS value FROM {s} WHERE syslog_program IS NOT NULL", [], [("Programs", "value")]),
+        ("Critical / Error Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error')", [], [("Events", "value")]),
+        ("Events Without Raw Message", "metric", f"SELECT count(*) AS value FROM {s} WHERE raw_message IS NULL OR raw_message = ''", [], [("Events", "value")]),
+    ]
+    trends = [
+        ("Unclassified Volume", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Severity Distribution", "donut", f"SELECT coalesce(syslog_severity,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC", [("Severity", "label")], [("Events", "value")]),
+        ("Transport Distribution", "donut", f"SELECT coalesce(transport,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC", [("Transport", "label")], [("Events", "value")]),
+        ("Facility Distribution", "bar", f"SELECT coalesce(syslog_facility,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 25", [("Facility", "label")], [("Events", "value")]),
+    ]
+    sources = [
+        ("Top Unknown Source IPs", "bar", f"SELECT source_ip AS label, count(*) AS value FROM {s} WHERE source_ip IS NOT NULL GROUP BY label ORDER BY value DESC LIMIT 30", [("Source IP", "label")], [("Events", "value")]),
+        ("Top Reported Hostnames", "bar", f"SELECT coalesce(host_name,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 30", [("Hostname", "label")], [("Events", "value")]),
+        ("Source First / Last Seen", "table", f"SELECT source_ip, min(_timestamp) AS first_seen, max(_timestamp) AS last_seen, count(*) AS events FROM {s} WHERE source_ip IS NOT NULL GROUP BY source_ip ORDER BY last_seen DESC LIMIT 100", [("Source IP", "source_ip"), ("First Seen", "first_seen"), ("Last Seen", "last_seen"), ("Events", "events")], []),
+        ("Source and Program Inventory", "table", f"SELECT source_ip, coalesce(host_name,'unknown') AS host, coalesce(syslog_program,'unknown') AS program, coalesce(syslog_severity,'unknown') AS severity, count(*) AS events FROM {s} GROUP BY (source_ip), coalesce(host_name,'unknown'), coalesce(syslog_program,'unknown'), coalesce(syslog_severity,'unknown') ORDER BY events DESC LIMIT 200", [("Source IP", "source_ip"), ("Hostname", "host"), ("Program", "program"), ("Severity", "severity"), ("Events", "events")], []),
+        ("Newest Sources in Selected Range", "table", f"SELECT source_ip, coalesce(host_name,'unknown') AS host, min(_timestamp) AS first_seen, max(_timestamp) AS last_seen, count(*) AS events FROM {s} WHERE source_ip IS NOT NULL GROUP BY source_ip, coalesce(host_name,'unknown') ORDER BY first_seen DESC LIMIT 100", [("Source IP", "source_ip"), ("Hostname", "host"), ("First Seen", "first_seen"), ("Last Seen", "last_seen"), ("Events", "events")], []),
+    ]
+    programs = [
+        ("Top Programs", "bar", f"SELECT coalesce(syslog_program,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC LIMIT 30", [("Program", "label")], [("Events", "value")]),
+        ("Message Formats", "donut", f"SELECT coalesce(msgformat,'unknown') AS label, count(*) AS value FROM {s} GROUP BY label ORDER BY value DESC", [("Format", "label")], [("Events", "value")]),
+        ("Programs by Source", "table", f"SELECT source_ip, coalesce(host_name,'unknown') AS host, coalesce(syslog_program,'unknown') AS program, count(*) AS events FROM {s} GROUP BY source_ip, coalesce(host_name,'unknown'), coalesce(syslog_program,'unknown') ORDER BY events DESC LIMIT 200", [("Source IP", "source_ip"), ("Hostname", "host"), ("Program", "program"), ("Events", "events")], []),
+        ("PID / Program Detail", "table", f"SELECT _timestamp AS event_time, source_ip, host_name AS host, syslog_program AS program, pid, syslog_severity AS severity, message FROM {s} WHERE pid IS NOT NULL ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Source IP", "source_ip"), ("Hostname", "host"), ("Program", "program"), ("PID", "pid"), ("Severity", "severity"), ("Message", "message")], []),
+    ]
+    errors = [
+        ("Critical / Error Trend", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(*) AS value FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error') GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Events", "value")]),
+        ("Errors by Unknown Source", "bar", f"SELECT coalesce(source_ip,'unknown') AS label, count(*) AS value FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error') GROUP BY label ORDER BY value DESC LIMIT 30", [("Source IP", "label")], [("Events", "value")]),
+        ("Critical / Error Detail", "table", f"SELECT _timestamp AS event_time, source_ip, host_name AS host, syslog_program AS program, syslog_facility AS facility, syslog_severity AS severity, message, raw_message FROM {s} WHERE lower(coalesce(syslog_severity,'')) IN ('emerg','alert','crit','err','emergency','critical','error') ORDER BY _timestamp DESC LIMIT 300", [("Time", "event_time"), ("Source IP", "source_ip"), ("Hostname", "host"), ("Program", "program"), ("Facility", "facility"), ("Severity", "severity"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    raw = [
+        ("Recent Unclassified Events", "table", f"SELECT _timestamp AS event_time, received_at, source_ip, host_name AS host, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS program, message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Received", "received_at"), ("Source IP", "source_ip"), ("Hostname", "host"), ("Facility", "facility"), ("Severity", "severity"), ("Program", "program"), ("Message", "message")], []),
+        ("Raw Unclassified Events", "table", f"SELECT _timestamp AS event_time, source_ip, host_name AS host, syslog_program AS program, message, raw_message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Source IP", "source_ip"), ("Hostname", "host"), ("Program", "program"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+    return dashboard("Unclassified Source Discovery", "Unknown-source inventory, first/last seen, volume, programs, severity, transport, errors and raw-event triage.", [
+        build_tab("unclassified", "unknown_overview", "Overview", overview),
+        build_tab("unclassified", "unknown_trends", "Trends & Protocol", trends),
+        build_tab("unclassified", "unknown_sources", "Source Discovery", sources),
+        build_tab("unclassified", "unknown_programs", "Programs & Processes", programs),
+        build_tab("unclassified", "unknown_errors", "Errors", errors),
+        build_tab("unclassified", "unknown_raw", "Raw Events", raw),
+    ])
+
+
 def dashboard(title: str, description: str, tabs: list[dict]) -> dict:
     return {
         "version": 5,
@@ -647,7 +696,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
-    parser.add_argument("--only", choices=("pmg", "fortigate", "juniper", "proxmox-ve", "ubersmith"))
+    parser.add_argument("--only", choices=("pmg", "fortigate", "juniper", "proxmox-ve", "ubersmith", "unclassified"))
     parser.add_argument("--bootstrap-schema", action="store_true",
                         help="create the selected future stream schema with one excluded marker")
     parser.add_argument("--validate-queries", action="store_true",
@@ -659,6 +708,7 @@ def main() -> int:
         "juniper": juniper_dashboard(),
         "proxmox-ve": proxmox_ve_dashboard(),
         "ubersmith": ubersmith_dashboard(),
+        "unclassified": unclassified_dashboard(),
     }
     if args.only:
         dashboards = {args.only: dashboards[args.only]}

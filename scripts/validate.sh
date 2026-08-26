@@ -9,6 +9,7 @@ command -v python3 >/dev/null || { echo 'python3 is required'; exit 2; }
 python3 -c 'import yaml' 2>/dev/null || { echo 'python3-yaml is required'; exit 2; }
 python3 scripts/render-syslog-config.py --enable-tls "${ENABLE_SYSLOG_TLS:-false}"
 python3 tests/test-dashboard-definitions.py
+python3 tests/test-alert-definitions.py
 
 for required in ZO_ROOT_USER_EMAIL ZO_ROOT_USER_PASSWORD DATA_DIR PLATFORM_TIMEZONE OPENOBSERVE_IMAGE SYSLOG_NG_IMAGE; do
   [ -n "${!required:-}" ] || { echo "Missing $required in .env" >&2; exit 2; }

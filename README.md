@@ -67,6 +67,7 @@ The parsers deliberately remain conservative. Every FortiGate key/value field is
 ./scripts/test-buffering.sh
 ./tests/test-vendor-parsers.sh
 ./scripts/provision-dashboards.py
+./scripts/provision-alerts.py
 ./scripts/backup.sh [/safe/path/backup.tar.gz]
 sudo ./scripts/update.sh --check
 ```
@@ -96,8 +97,10 @@ For production, replace `syslog-ng/tls/server.key`, `server.crt`, and the trust 
 
 Reports are available through the upstream Report Server image, but disabled by default so absent SMTP cannot impede collection. Set `COMPOSE_PROFILES=reports`, populate SMTP variables in `.env`, then run `docker compose up -d`. It stays internal to the Compose network. OpenObserve OSS dashboards, search and alerts are available; this package does not install the Enterprise edition.
 
-Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **PMG Mail Reporting**, **FortiGate Security & Traffic**, **Juniper Router Operations**, **Proxmox VE Operations**, and **Ubersmith Billing Operations** dashboards through OpenObserve's supported API. Each is an isolated dashboard object and stream; `--only juniper`, `--only proxmox-ve`, or `--only ubersmith` provisions one without updating the others. The version-controlled definitions are documented under `openobserve/dashboards/`. Useful additional saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Never manipulate OpenObserve SQLite directly.
+Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **PMG Mail Reporting**, **FortiGate Security & Traffic**, **Juniper Router Operations**, **Proxmox VE Operations**, **Ubersmith Billing Operations**, and **Unclassified Source Discovery** dashboards through OpenObserve's supported API. Each is an isolated dashboard object and stream; `--only juniper`, `--only proxmox-ve`, `--only ubersmith`, or `--only unclassified` provisions one without updating the others. The version-controlled definitions are documented under `openobserve/dashboards/`. Useful additional saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Never manipulate OpenObserve SQLite directly.
+
+`./scripts/provision-alerts.py` creates three unclassified-source rules: any activity, high five-minute volume, and error/critical activity. OpenObserve requires a destination or workflow even for disabled alerts, so provisioning is safely skipped until an existing, tested notification destination is named in `UNCLASSIFIED_ALERT_DESTINATION`. See [Unclassified source discovery](docs/UNCLASSIFIED.md).
 
 ## Source guidance and limits
 
-Use TCP where a device supports it, and TLS only after certificates are deployed. Traffic/session logging can consume substantially more than 250 GB/month; selectively enable FortiGate traffic and UTM logs based on troubleshooting needs. See [FortiGate](docs/FORTIGATE.md), [FortiManager/FortiAnalyzer](docs/FORTIMANAGER.md), [Cisco](docs/CISCO.md), [Juniper](docs/JUNIPER.md), [Proxmox VE](docs/PROXMOX-VE.md), [PMG](docs/PMG.md), [Linux](docs/LINUX.md), and [Ubersmith](docs/UBERSMITH.md). Upstream source links and exact capabilities are recorded in [docs/REFERENCES.md](docs/REFERENCES.md).
+Use TCP where a device supports it, and TLS only after certificates are deployed. Traffic/session logging can consume substantially more than 250 GB/month; selectively enable FortiGate traffic and UTM logs based on troubleshooting needs. See [FortiGate](docs/FORTIGATE.md), [FortiManager/FortiAnalyzer](docs/FORTIMANAGER.md), [Cisco](docs/CISCO.md), [Juniper](docs/JUNIPER.md), [Proxmox VE](docs/PROXMOX-VE.md), [PMG](docs/PMG.md), [Linux](docs/LINUX.md), [Ubersmith](docs/UBERSMITH.md), and [Unclassified source discovery](docs/UNCLASSIFIED.md). Upstream source links and exact capabilities are recorded in [docs/REFERENCES.md](docs/REFERENCES.md).

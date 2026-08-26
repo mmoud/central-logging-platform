@@ -1,7 +1,7 @@
 # Bundled dashboards
 
 `scripts/provision-dashboards.py` contains the version-controlled definitions
-for the PMG, FortiGate, Juniper, and Proxmox VE dashboards and creates or updates them through
+for the PMG, FortiGate, Juniper, Proxmox VE, Ubersmith, and unclassified-source dashboards and creates or updates them through
 OpenObserve's supported dashboard API.
 
 Run `sudo ./scripts/provision-dashboards.py` from the installed platform
@@ -33,6 +33,11 @@ dashboard definitions.
 application errors, mail, PHP/web, Solr, cron, Redis and ClamAV activity. It
 uses the dedicated `ubersmith` stream and can be provisioned independently with
 `--only ubersmith`.
+
+**Unclassified Source Discovery** is a separate 24-panel dashboard for finding
+new or unmapped senders. It shows first/last seen time, volume, transport,
+facility, severity, host and program inventory, errors, recent samples, and the
+preserved raw event. Provision it independently with `--only unclassified`.
 
 Before a future source sends its first log, OpenObserve has no stream/schema and
 cannot execute dashboard SQL. To validate a pre-staged Juniper or PVE dashboard,

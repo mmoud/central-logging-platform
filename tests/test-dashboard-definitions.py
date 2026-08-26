@@ -49,7 +49,8 @@ def main() -> int:
     validate_dashboard(MODULE.juniper_dashboard(), 30)
     validate_dashboard(MODULE.proxmox_ve_dashboard(), 32)
     validate_dashboard(MODULE.ubersmith_dashboard(), 24)
-    print("Dashboard definitions passed (186 panels).")
+    validate_dashboard(MODULE.unclassified_dashboard(), 24)
+    print("Dashboard definitions passed (210 panels).")
     return 0
 
 
