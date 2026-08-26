@@ -1,0 +1,12 @@
+.env
+.env.backup*
+logging-data/
+backups/
+syslog-ng/tls/*.key
+syslog-ng/tls/*.crt
+syslog-ng/tls/*.csr
+syslog-ng/tls/*.srl
+syslog-ng/conf.d/45-device-routes.conf
+syslog-ng/conf.d/25-runtime.conf
+__pycache__/
+*.pyc

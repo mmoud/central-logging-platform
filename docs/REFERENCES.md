@@ -1,0 +1,20 @@
+# Upstream references
+
+Verified 2026-08-25. Prefer these upstream sources when changing the package.
+
+- [OpenObserve releases and production container registry](https://openobserve.ai/docs/releases/)
+- [OpenObserve Docker/self-hosted deployment](https://openobserve.ai/docs/getting-started/)
+- [OpenObserve official Helm image compatibility matrix](https://github.com/openobserve/openobserve-helm-chart/blob/main/charts/openobserve/values.yaml)
+- [OpenObserve JSON and multi-line ingestion APIs](https://openobserve.ai/docs/ingestion/logs/curl/)
+- [OpenObserve environment variables, retention, local storage, reporting](https://openobserve.ai/docs/administration/configuration/environment-variables/)
+- [OpenObserve storage modes](https://openobserve.ai/docs/administration/maintenance/storage-management/storage/)
+- [OpenObserve Report Server repository](https://github.com/openobserve/o2_report_server)
+- [OpenObserve Report Server setup](https://openobserve.ai/blog/openobserve-report-server-set-up/)
+- [syslog-ng official image and configuration repository](https://github.com/syslog-ng/syslog-ng)
+- [syslog-ng OSE HTTP and durable disk-buffer options](https://origin-support.syslog-ng.com/technical-documents/doc/syslog-ng-open-source-edition/3.38/administration-guide/40)
+- [Docker Engine on Ubuntu official installation](https://docs.docker.com/engine/install/ubuntu/)
+- [FortiOS syslog setting CLI reference](https://docs.fortinet.com/document/fortigate/7.0.8/cli-reference/448620/config-log-syslogd-setting)
+- [Cisco IOS-XE logging data model/examples](https://netascode.cisco.com/docs/data_models/iosxe/device/logging/)
+- [Junos syslog transport reference](https://www.juniper.net/documentation/us/en/software/junos/network-mgmt/topics/ref/statement/system-syslog-host-transport.html)
+
+OpenObserve supports the OSS `_json` and `_multi` APIs. This package uses `_multi` because syslog-ng HTTP batching produces newline-delimited JSON safely and efficiently. `ZO_COMPACT_DATA_RETENTION_DAYS=30` is the documented global setting. The supplied images are digest-pinned in `.env.example`; `scripts/update.sh --check` resolves official stable channels and `--apply` records a fresh immutable digest before deployment.

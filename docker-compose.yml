@@ -1,0 +1,91 @@
+services:
+  openobserve:
+    image: ${OPENOBSERVE_IMAGE:?set OPENOBSERVE_IMAGE in .env}
+    container_name: logging-platform-openobserve
+    restart: unless-stopped
+    environment:
+      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:?set ZO_ROOT_USER_EMAIL in .env}
+      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?set ZO_ROOT_USER_PASSWORD in .env}
+      ZO_DATA_DIR: /data
+      ZO_LOCAL_MODE: "true"
+      ZO_LOCAL_MODE_STORAGE: disk
+      ZO_COMPACT_DATA_RETENTION_DAYS: ${ZO_COMPACT_DATA_RETENTION_DAYS:-30}
+      ZO_WEB_URL: ${ZO_WEB_URL:-http://localhost:5080}
+      ZO_REPORT_SERVER_URL: ${ZO_REPORT_SERVER_URL:-http://report-server:5090}
+      ZO_TELEMETRY: "false"
+      ZO_HEALTH_CHECK_ENABLED: "true"
+    ports:
+      - "${OPENOBSERVE_HOST_PORT:-5080}:5080/tcp"
+    volumes:
+      - ${DATA_DIR:?set DATA_DIR in .env}/openobserve:/data
+    networks: [logging]
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  syslog-ng:
+    image: ${SYSLOG_NG_IMAGE:?set SYSLOG_NG_IMAGE in .env}
+    container_name: logging-platform-syslog-ng
+    restart: unless-stopped
+    # Bypass the upstream convenience entrypoint: it prints all environment
+    # variables, including ingestion credentials, before starting syslog-ng.
+    entrypoint: ["/usr/sbin/syslog-ng"]
+    command: ["-F", "-f", "/etc/syslog-ng/syslog-ng.conf"]
+    depends_on:
+      openobserve:
+        condition: service_started
+    environment:
+      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:?set ZO_ROOT_USER_EMAIL in .env}
+      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?set ZO_ROOT_USER_PASSWORD in .env}
+      ZO_ORG: ${ZO_ORG:-default}
+      SYSLOG_DISK_BUFFER_BYTES_PER_STREAM: ${SYSLOG_DISK_BUFFER_BYTES_PER_STREAM:-1073741824}
+      SYSLOG_BATCH_LINES: ${SYSLOG_BATCH_LINES:-200}
+      SYSLOG_BATCH_BYTES: ${SYSLOG_BATCH_BYTES:-1048576}
+      SYSLOG_BATCH_TIMEOUT_MS: ${SYSLOG_BATCH_TIMEOUT_MS:-1000}
+    ports:
+      - "${SYSLOG_UDP_PORT:-514}:514/udp"
+      - "${SYSLOG_TCP_PORT:-514}:514/tcp"
+      - "${SYSLOG_TLS_PORT:-6514}:6514/tcp"
+    volumes:
+      - ./syslog-ng/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
+      - ./syslog-ng/conf.d:/etc/syslog-ng/conf.d:ro
+      - ./syslog-ng/tls:/etc/syslog-ng/tls:ro
+      - ${DATA_DIR:?set DATA_DIR in .env}/syslog-ng/buffer:/var/lib/syslog-ng/buffer
+      - ${DATA_DIR:?set DATA_DIR in .env}/syslog-ng/state:/var/lib/syslog-ng/state
+    networks: [logging]
+    healthcheck:
+      test: ["CMD-SHELL", "syslog-ng-ctl healthcheck 2>/dev/null || pgrep -x syslog-ng >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  report-server:
+    profiles: [reports]
+    image: ${REPORT_SERVER_IMAGE:?set REPORT_SERVER_IMAGE in .env}
+    container_name: logging-platform-report-server
+    restart: unless-stopped
+    environment:
+      ZO_REPORT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:?set ZO_ROOT_USER_EMAIL in .env}
+      ZO_REPORT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?set ZO_ROOT_USER_PASSWORD in .env}
+      ZO_HTTP_ADDR: 0.0.0.0
+      ZO_HTTP_PORT: "5090"
+      ZO_SMTP_HOST: ${ZO_SMTP_HOST:-}
+      ZO_SMTP_PORT: ${ZO_SMTP_PORT:-}
+      ZO_SMTP_USER_NAME: ${ZO_SMTP_USER_NAME:-}
+      ZO_SMTP_PASSWORD: ${ZO_SMTP_PASSWORD:-}
+      ZO_SMTP_FROM_EMAIL: ${ZO_SMTP_FROM_EMAIL:-}
+      ZO_SMTP_ENCRYPTION: ${ZO_SMTP_ENCRYPTION:-}
+    networks: [logging]
+    shm_size: 1gb
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+networks:
+  logging:
+    name: logging-platform
+    driver: bridge

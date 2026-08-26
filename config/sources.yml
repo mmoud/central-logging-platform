@@ -1,0 +1,28 @@
+# Source-IP mapping is the authoritative classifier.  It is deliberately small,
+# reviewable, and converted to syslog-ng filters by scripts/render-syslog-config.py.
+devices:
+  - name: fw01
+    ip: 10.10.10.1
+    vendor: fortinet
+    product: fortigate
+    stream: fortigate
+  - name: nx01
+    ip: 10.10.10.20
+    vendor: cisco
+    product: nexus
+    stream: cisco
+  - name: srx01
+    ip: 10.10.10.30
+    vendor: juniper
+    product: srx
+    stream: juniper
+  - name: pve01
+    ip: 10.10.10.40
+    vendor: proxmox
+    product: pve
+    stream: proxmox_ve
+  - name: pmg01
+    ip: 10.10.10.50
+    vendor: proxmox
+    product: pmg
+    stream: proxmox_mail_gateway
