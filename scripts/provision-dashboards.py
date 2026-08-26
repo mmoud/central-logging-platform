@@ -16,7 +16,8 @@ from pathlib import Path
 
 
 DASHBOARD_FOLDERS = {
-    "pmg": ("Messaging", "Mail flow, delivery and filtering reporting."),
+    "pmg-reporting": ("Messaging", "Mail flow, delivery and filtering reporting."),
+    "pmg-investigation": ("Messaging", "Sender, recipient, filtering and queue investigation."),
     "fortigate": ("Network & Security", "Firewall, router and network security reporting."),
     "juniper": ("Network & Security", "Firewall, router and network security reporting."),
     "proxmox-ve": ("Infrastructure", "Virtualization and host operations."),
@@ -203,7 +204,7 @@ def build_tab(stream: str, tab_id: str, name: str, specs: list[dict],
     return {"tabId": tab_id, "name": name, "panels": panels}
 
 
-def pmg_dashboard() -> dict:
+def pmg_dashboards() -> dict[str, dict]:
     s = '"proxmox_mail_gateway"'
     overview = [
         ("Unique Filtered Messages", "metric", f"SELECT count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_filter_id IS NOT NULL", [], [("Messages", "value")]),
@@ -283,31 +284,37 @@ def pmg_dashboard() -> dict:
         ("Queue-ID Correlation Timeline", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_status AS status, mail_delay AS delay, message, raw_message FROM {s} WHERE mail_queue_id IS NOT NULL ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("Status", "status"), ("Delay", "delay"), ("Message", "message"), ("Raw", "raw_message")], []),
         ("Raw PMG / Postfix Events", "table", f"SELECT _timestamp AS event_time, host_name AS host, source_ip, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS program, message, raw_message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Host", "host"), ("Collector Source", "source_ip"), ("Facility", "facility"), ("Severity", "severity"), ("Program", "program"), ("Message", "message"), ("Raw", "raw_message")], []),
     ]
-    return dashboard("PMG Mail Reporting", "Comprehensive PMG/Postfix mail-flow, delivery, filtering and queue-ID correlation reporting.", [
+    reporting = dashboard("PMG Mail Reporting", "PMG/Postfix operational mail-flow, delivery, filtering, authentication and TLS reporting.", [
         build_tab("proxmox_mail_gateway", "pmg_overview", "Overview", overview[:6]),
         build_tab("proxmox_mail_gateway", "pmg_volume", "Volume & Components", overview[6:9] + flow[10:11]),
-        build_tab("proxmox_mail_gateway", "pmg_recent", "Recent Mail", overview[9:]),
         build_tab("proxmox_mail_gateway", "pmg_people", "Senders & Recipients", flow[:6]),
         build_tab("proxmox_mail_gateway", "pmg_routing", "Routing & SMTP", flow[6:10]),
         build_tab("proxmox_mail_gateway", "pmg_delivery", "Delivery Performance", flow[11:]),
         build_tab("proxmox_mail_gateway", "pmg_filtering", "Filtering", filtering[:4]),
         build_tab("proxmox_mail_gateway", "pmg_filter_activity", "Filter Activity", filtering[4:8]),
+        build_tab("proxmox_mail_gateway", "pmg_authentication", "Email Authentication", authentication[:6]),
+        build_tab("proxmox_mail_gateway", "pmg_tls", "TLS", tls),
+    ], relative_period="7d")
+    investigation_dashboard = dashboard(
+        "PMG Message Investigation",
+        "Address-driven PMG filtering, authentication, queue and raw-event investigation.",
+        [
+        build_tab("proxmox_mail_gateway", "pmg_investigation", "Message Investigation", investigation),
+        build_tab("proxmox_mail_gateway", "pmg_recent", "Recent Mail", overview[9:]),
+        build_tab("proxmox_mail_gateway", "pmg_auth_detail", "Authentication Detail", authentication[6:]),
         build_tab("proxmox_mail_gateway", "pmg_filter_detail", "Spam / Virus Detail", filtering[8:9]),
         build_tab("proxmox_mail_gateway", "pmg_delivery_detail", "Rejected / Deferred", filtering[9:]),
-        build_tab("proxmox_mail_gateway", "pmg_authentication", "Email Authentication", authentication[:6]),
-        build_tab("proxmox_mail_gateway", "pmg_auth_detail", "Authentication Detail", authentication[6:]),
-        build_tab("proxmox_mail_gateway", "pmg_investigation", "Message Investigation", investigation),
-        build_tab("proxmox_mail_gateway", "pmg_tls", "TLS", tls),
         build_tab("proxmox_mail_gateway", "pmg_trace", "Queue Trace", trace[:1]),
         build_tab("proxmox_mail_gateway", "pmg_raw", "Raw Events", trace[1:]),
-    ], extra_variables=[
+        ], extra_variables=[
         {"type": "textbox", "name": "sender", "label": "Sender email", "value": "_o2_all_",
          "options": [], "multiSelect": False, "hideOnDashboard": False,
          "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
         {"type": "textbox", "name": "recipient", "label": "Recipient email", "value": "_o2_all_",
          "options": [], "multiSelect": False, "hideOnDashboard": False,
          "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True},
-    ])
+        ], relative_period="7d")
+    return {"pmg-reporting": reporting, "pmg-investigation": investigation_dashboard}
 
 
 def fortigate_dashboard() -> dict:
@@ -947,14 +954,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
-    parser.add_argument("--only", choices=("pmg", "fortigate", "juniper", "proxmox-ve", "ubersmith", "unclassified", "overview"))
+    parser.add_argument("--only", choices=("pmg", "pmg-reporting", "pmg-investigation", "fortigate", "juniper", "proxmox-ve", "ubersmith", "unclassified", "overview"))
     parser.add_argument("--bootstrap-schema", action="store_true",
                         help="create the selected future stream schema with one excluded marker")
     parser.add_argument("--validate-queries", action="store_true",
                         help="execute every panel SQL query over the past 30 days")
     args = parser.parse_args()
     dashboards = {
-        "pmg": pmg_dashboard(),
+        **pmg_dashboards(),
         "fortigate": fortigate_dashboard(),
         "juniper": juniper_dashboard(),
         "proxmox-ve": proxmox_ve_dashboard(),
@@ -962,7 +969,9 @@ def main() -> int:
         "unclassified": unclassified_dashboard(),
         "overview": central_overview_dashboard(),
     }
-    if args.only:
+    if args.only == "pmg":
+        dashboards = {key: body for key, body in dashboards.items() if key.startswith("pmg-")}
+    elif args.only:
         dashboards = {args.only: dashboards[args.only]}
     if args.export_dir:
         args.export_dir.mkdir(parents=True, exist_ok=True)

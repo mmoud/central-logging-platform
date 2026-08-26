@@ -125,24 +125,30 @@ all panels before the first real header-summary event arrives. Every bundled PMG
 query explicitly excludes that record, so it never changes operational totals
 or appears in tables.
 
-The **PMG Mail Reporting** dashboard uses focused tabs for overview, volume and
-components, recent mail, senders and recipients, routing and SMTP, delivery,
-filtering, message investigation, TLS, queue-ID trace, and raw events. Mail
-volume is counted by PMG filter ID—not Postfix queue hop. Original/header sender,
-envelope sender, header recipient, and envelope recipient are clearly labelled
-and reported separately. Address, relay, source-IP, rule, and rejection rankings
-are tables so long identifiers remain readable; compact categorical summaries
-remain charts.
+The Messaging folder contains two deliberately separate dashboards:
 
-For a mail investigation, open **Message Investigation**, enter a complete
-address in **Sender email**, **Recipient email**, or both, and click the
-dashboard Refresh button. `_o2_all_` means no restriction. **Matching Messages**
-shows one row per PMG filter ID, **Filtering Timeline** shows header parsing,
-authentication, rule, and quarantine/accept activity, and **Delivery Timeline**
-follows the linked Postfix queue ID through relay status, DSN, delay, and SMTP
-response. A quarantined or blocked message legitimately has no delivery queue.
-The lookup checks visible/header and SMTP-envelope identities, which is required
-for Microsoft 365 SRS forwarding.
+- **PMG Mail Reporting** contains overview, volume, sender/recipient summaries,
+  routing, delivery performance, filtering trends, email authentication, and
+  TLS reporting.
+- **PMG Message Investigation** contains address-driven message lookup, recent
+  mail, authentication detail, spam/virus detail, rejected/deferred mail,
+  queue tracing, and raw events.
+
+Mail volume is counted by PMG filter ID—not Postfix queue hop. Original/header
+sender, envelope sender, header recipient, and envelope recipient are clearly
+labelled and reported separately. Address, relay, source-IP, rule, and rejection
+rankings are tables so long identifiers remain readable; compact categorical
+summaries remain charts.
+
+For a mail investigation, open **PMG Message Investigation → Message
+Investigation**, enter a complete address in **Sender email**, **Recipient
+email**, or both, and click the dashboard Refresh button. `_o2_all_` means no
+restriction. **Matching Messages** shows one row per PMG filter ID, **Filtering
+Timeline** shows header parsing, authentication, rule, and quarantine/accept
+activity, and **Delivery Timeline** follows the linked Postfix queue ID through
+relay status, DSN, delay, and SMTP response. A quarantined or blocked message
+legitimately has no delivery queue. The lookup checks visible/header and
+SMTP-envelope identities, which is required for Microsoft 365 SRS forwarding.
 It also covers PMG rules/actions, delivery outcomes, domains, relays, source IPs,
 size, delay, DSN, SMTP response, spam, malware, rejects, deferrals, and queue-ID
 investigation. Separate **Email Authentication** and **Authentication Detail**

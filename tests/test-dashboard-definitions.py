@@ -102,9 +102,12 @@ def validate_pmg_bootstrap() -> None:
 
 
 def main() -> int:
-    pmg = MODULE.pmg_dashboard()
-    validate_dashboard(pmg, 49, "7d", extra_variables=("sender", "recipient"))
-    validate_bootstrap_exclusion(pmg)
+    pmg = MODULE.pmg_dashboards()
+    validate_dashboard(pmg["pmg-reporting"], 40, "7d")
+    validate_dashboard(pmg["pmg-investigation"], 9, "7d",
+                       extra_variables=("sender", "recipient"))
+    validate_bootstrap_exclusion(pmg["pmg-reporting"])
+    validate_bootstrap_exclusion(pmg["pmg-investigation"])
     validate_pmg_bootstrap()
     validate_dashboard(MODULE.fortigate_dashboard(), 70, "24h")
     validate_dashboard(MODULE.juniper_dashboard(), 30, "24h")
