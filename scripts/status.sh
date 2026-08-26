@@ -4,7 +4,15 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 . "$SCRIPT_DIR/common.sh"
 printf 'Logging Platform Status\n\n'
 for service in openobserve syslog-ng report-server; do
-  state=$(dc ps --format json "$service" 2>/dev/null | jq -r '.Health // .State // "NOT RUNNING"' 2>/dev/null || true)
+  state=$(dc ps --format json "$service" 2>/dev/null | jq -r '
+    if (.Health // "") != "" then .Health
+    elif (.State // "") != "" then .State
+    else "NOT RUNNING"
+    end
+  ' 2>/dev/null || true)
+  if [ "$service" = openobserve ] && curl -fsS "$(o2_url)/healthz" | jq -e '.status == "ok"' >/dev/null 2>&1; then
+    state=HEALTHY
+  fi
   [ -n "$state" ] || state='NOT ENABLED'
   printf '%-18s %s\n' "$service" "$state"
 done
