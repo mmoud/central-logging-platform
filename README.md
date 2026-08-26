@@ -55,7 +55,7 @@ editor config/sources.yml
 
 The mapping—not fragile content guessing—selects `fortigate`, `cisco`, `juniper`, `proxmox_ve`, `proxmox_mail_gateway`, or `linux`. Unmapped source IPs always go to `unclassified`. Every record includes `raw_message`, `source.ip`, syslog fields, timestamps, normalized observer/device fields, and stream. FortiGate key/value fields are additionally kept as `fortigate.*`; no parser failure discards a message.
 
-The initial parser deliberately remains conservative. Cisco and Junos event identifiers, standard Linux program/PID, and Postfix queue IDs remain searchable in the raw record and the normalized syslog fields; use saved queries (below) to correlate rather than fabricate cross-event mail joins. Expand parsing only with representative production samples and validate before deployment.
+The parsers deliberately remain conservative. FortiGate key/value fields and common PMG/Postfix mail fields are extracted while parser non-matches remain valid events. PMG records retain queue IDs for query-time correlation rather than fabricating cross-event mail joins. Cisco and Junos event identifiers and standard Linux program/PID remain searchable in normalized syslog fields and the raw record.
 
 ## Operations
 
@@ -65,6 +65,7 @@ The initial parser deliberately remains conservative. Cisco and Junos event iden
 ./scripts/test-ingestion.sh fortigate
 ./scripts/test-syslog.sh [collector-host]
 ./scripts/test-buffering.sh
+./scripts/provision-dashboards.py
 ./scripts/backup.sh [/safe/path/backup.tar.gz]
 sudo ./scripts/update.sh --check
 ```
@@ -89,7 +90,7 @@ For production, replace `syslog-ng/tls/server.key`, `server.crt`, and the trust 
 
 Reports are available through the upstream Report Server image, but disabled by default so absent SMTP cannot impede collection. Set `COMPOSE_PROFILES=reports`, populate SMTP variables in `.env`, then run `docker compose up -d`. It stays internal to the Compose network. OpenObserve OSS dashboards, search and alerts are available; this package does not install the Enterprise edition.
 
-Useful saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Build dashboards from those queries rather than manipulating OpenObserve SQLite directly.
+Run `./scripts/provision-dashboards.py` to idempotently create or update the bundled **PMG Mail Reporting** and **FortiGate Security & Traffic** dashboards through OpenObserve's supported API. The version-controlled dashboard definitions are documented under `openobserve/dashboards/`. Useful additional saved-query starting points are in [docs/REPORTING.md](docs/REPORTING.md). Never manipulate OpenObserve SQLite directly.
 
 ## Source guidance and limits
 

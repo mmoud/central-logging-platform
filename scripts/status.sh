@@ -30,4 +30,8 @@ listener_status() {
 
 listener_status 'UDP/514' '-lnu' '514'
 listener_status 'TCP/514' '-lnt' '514'
-listener_status 'TLS/6514' '-lnt' '6514'
+if [ "${ENABLE_SYSLOG_TLS:-false}" = true ]; then
+  listener_status 'TLS/6514' '-lnt' '6514'
+else
+  printf '%-18s DISABLED\n' 'TLS/6514'
+fi

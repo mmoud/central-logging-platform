@@ -2,6 +2,7 @@
 .env.backup*
 logging-data/
 backups/
+openobserve/dashboards/generated/
 syslog-ng/tls/*.key
 syslog-ng/tls/*.crt
 syslog-ng/tls/*.csr

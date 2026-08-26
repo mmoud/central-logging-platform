@@ -59,12 +59,12 @@ def load_devices(path: Path) -> list[dict[str, str]]:
 def source_conf(enable_tls: bool) -> str:
     entries = [
         'source s_network {',
-        '    network(ip("0.0.0.0") port(514) transport("udp"));',
-        '    network(ip("0.0.0.0") port(514) transport("tcp") max-connections(200));',
+        '    network(ip("0.0.0.0") port(514) transport("udp") flags(store-raw-message));',
+        '    network(ip("0.0.0.0") port(514) transport("tcp") max-connections(200) flags(store-raw-message));',
     ]
     if enable_tls:
         entries.extend([
-            '    network(ip("0.0.0.0") port(6514) transport("tls") max-connections(200)',
+            '    network(ip("0.0.0.0") port(6514) transport("tls") max-connections(200) flags(store-raw-message)',
             '        tls(key-file("/etc/syslog-ng/tls/server.key") cert-file("/etc/syslog-ng/tls/server.crt") ca-dir("/etc/syslog-ng/tls/ca") peer-verify(optional-untrusted)));',
         ])
     entries += ['};', '']
@@ -77,10 +77,22 @@ def route_conf(devices: list[dict[str, str]]) -> str:
     for n, dev in enumerate(devices, start=1):
         ident = f"device_{n}"
         filters.append(f"f_{ident}")
+        parsers = ""
+        if dev["stream"] == "fortigate":
+            parsers = "parser(p_fortigate_kv); "
+        elif dev["stream"] == "proxmox_mail_gateway":
+            parsers = (
+                "parser(p_mail_queue_id); parser(p_mail_sender); parser(p_mail_recipient); "
+                "parser(p_mail_sender_domain); parser(p_mail_recipient_domain); "
+                "parser(p_mail_delivery); parser(p_mail_status); parser(p_mail_dsn); "
+                "parser(p_mail_delay); parser(p_mail_delays); parser(p_mail_size); "
+                "parser(p_mail_message_id); parser(p_mail_client); parser(p_mail_relay_ip); "
+                "parser(p_mail_spam); "
+            )
         lines += [
             f'filter f_{ident} {{ {"netmask6" if ":" in dev["ip"] else "netmask"}("{dev["ip"]}/{128 if ":" in dev["ip"] else 32}"); }};',
             f'rewrite r_{ident} {{ set("{q(dev["name"])}" value("device_name")); set("{q(dev["vendor"])}" value("observer.vendor")); set("{q(dev["product"])}" value("observer.product")); set("{q(dev["stream"])}" value("stream")); }};',
-            f'log {{ source(s_network); filter(f_{ident}); rewrite(r_common); rewrite(r_{ident}); ' + ("parser(p_fortigate_kv); " if dev["stream"] == "fortigate" else "") + f'destination(d_{dev["stream"]}); flags(flow-control); }};',
+            f'log {{ source(s_network); filter(f_{ident}); rewrite(r_common); rewrite(r_{ident}); {parsers}' + f'destination(d_{dev["stream"]}); flags(flow-control); }};',
         ]
     if filters:
         lines.append("filter f_unclassified { " + " and ".join(f"not filter({f})" for f in filters) + "; };")
