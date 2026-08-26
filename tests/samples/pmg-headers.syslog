@@ -3,3 +3,5 @@
 <22>Aug 26 10:30:02 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: accept mail to <billing@example.net> (4F6A912345) (rule: default-accept)
 <22>Aug 26 10:30:03 sfilter pmg-smtp-filter[2201]: 9F8E7D6C5B: moved mail for <user@example.net> to spam quarantine - 67ab12cd (rule: Quarantine/Mark Spam (Level 3))
 <22>Aug 26 10:30:04 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: processing time: 0.421 seconds (0.200, 0.010, 0)
+<22>Aug 26 10:30:05 sfilter pmg-smtp-filter[2201]: 1A2B3C4D5E: SA score=6/5 time=7.949 bayes=0.00 autolearn=no autolearn_force=no hits=DKIM_SIGNED(0.1),DKIM_VALID(-0.1),DMARC_REJECT(0.1),KAM_DMARC_REJECT(7),SPF_HELO_PASS(-0.001),SPF_PASS(-0.001)
+<22>Aug 26 10:30:06 sfilter pmg-smtp-filter[2201]: 2A3B4C5D6E: SA score=-1/5 time=0.421 bayes=0.00 autolearn=no autolearn_force=no hits=ARC_SIGNED(0.001),ARC_VALID(-0.1),DKIM_SIGNED(0.1),DKIM_VALID_AU(-0.1),DMARC_PASS(-0.1),SPF_PASS(-0.001)

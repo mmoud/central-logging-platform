@@ -80,6 +80,22 @@ size, SMTP response/DSN/status, delay stages, rejection, spam, and virus
 indicators when present. Every record retains `raw_message` and unmatched PMG
 messages are still ingested.
 
+PMG's SpamAssassin result line is also normalized into `mail_spf_result`,
+`mail_dkim_result`, `mail_dmarc_result`, `mail_arc_result`,
+`mail_spam_score`, `mail_spam_threshold`, and the complete `mail_auth_hits`.
+`DKIM_VALID_AU` means the signature is valid and aligned with the visible From
+domain; `DKIM_VALID` without `_AU` means the signature validates but does not
+establish DMARC alignment. `DMARC_REJECT` and `DMARC_QUAR` mean DMARC failed
+against a domain publishing `p=reject` or `p=quarantine`; they do not mean PMG
+necessarily rejected the message.
+
+Microsoft 365 SRS fixes the forwarded envelope's SPF result but cannot by
+itself make DMARC pass. Leave SRS enabled. Prefer a surviving From-aligned DKIM
+signature or a validated ARC chain, and verify actual `ARC-Seal` and
+`Authentication-Results` headers before trusting any ARC sealer. Do not broadly
+whitelist Microsoft 365 addresses or disable DMARC scoring merely because mail
+is forwarded.
+
 Create or update the bundled mail dashboard through OpenObserve's supported API:
 
 ```bash
@@ -102,5 +118,7 @@ ID—not Postfix queue hop. Original/header sender, envelope sender, header
 recipient, and envelope recipient are clearly labelled and reported separately.
 It also covers PMG rules/actions, delivery outcomes, domains, relays, source IPs,
 size, delay, DSN, SMTP response, spam, malware, rejects, deferrals, and queue-ID
-investigation. Keeping each tab small also prevents duplicate lazy-loaded query
-results in current OpenObserve.
+investigation. Separate **Email Authentication** and **Authentication Detail**
+tabs report SPF, DKIM validity/alignment, DMARC policy failures, ARC results,
+and the exact SpamAssassin authentication tests. Keeping each tab small also
+prevents duplicate lazy-loaded query results in current OpenObserve.

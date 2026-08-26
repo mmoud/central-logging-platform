@@ -59,6 +59,14 @@ assert_field 'PMG .*"linked_queue_id":"4F6A912345"'
 assert_field 'PMG .*"rule":"default-accept"'
 assert_field 'PMG .*"filter_action":"spam quarantine"'
 assert_field 'PMG .*"rule":"Quarantine/Mark Spam \(Level 3\)"'
+assert_field 'PMG .*"spam_score":"6"'
+assert_field 'PMG .*"spam_threshold":"5"'
+assert_field 'PMG .*"spf_result":"SPF_PASS"'
+assert_field 'PMG .*"dkim_result":"DKIM_VALID"'
+assert_field 'PMG .*"dmarc_result":"DMARC_REJECT"'
+assert_field 'PMG .*"arc_result":"ARC_VALID"'
+assert_field 'PMG .*"dkim_result":"DKIM_VALID_AU"'
+assert_field 'PMG .*"dmarc_result":"DMARC_PASS"'
 if grep -E 'PROXMOX .*"PROGRAM":"systemd"' "$output" | grep -q 'authentication_result'; then
   echo 'A systemd service failure was incorrectly classified as an authentication result.' >&2
   cat "$output" >&2

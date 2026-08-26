@@ -240,6 +240,15 @@ def pmg_dashboard() -> dict:
         ("Spam / Virus Detail", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, message, raw_message FROM {s} WHERE lower(message) LIKE '%spam%' OR lower(message) LIKE '%virus%' OR lower(message) LIKE '%malware%' ORDER BY _timestamp DESC LIMIT 200", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Message", "message"), ("Raw", "raw_message")], []),
         ("Rejected / Deferred Detail", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_dsn AS dsn, mail_status AS status, mail_smtp_response_code AS response_code, message FROM {s} WHERE lower(coalesce(mail_status,'')) IN ('deferred','bounced','rejected') OR lower(message) LIKE '%reject:%' ORDER BY _timestamp DESC LIMIT 200", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("DSN", "dsn"), ("Status", "status"), ("Response", "response_code"), ("Message", "message")], []),
     ]
+    authentication = [
+        ("Messages Evaluated", "metric", f"SELECT count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_auth_hits IS NOT NULL", [], [("Messages", "value")]),
+        ("DMARC Result / Policy", "donut", f"SELECT CASE mail_dmarc_result WHEN 'DMARC_PASS' THEN 'pass' WHEN 'DMARC_REJECT' THEN 'fail (p=reject)' WHEN 'DMARC_QUAR' THEN 'fail (p=quarantine)' WHEN 'DMARC_NONE' THEN 'no enforcement (p=none)' WHEN 'DMARC_MISSING' THEN 'no DMARC record' WHEN 'DMARC_PERMERROR' THEN 'permanent error' WHEN 'DMARC_TEMPERROR' THEN 'temporary error' ELSE lower(coalesce(mail_dmarc_result,'not reported')) END AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_auth_hits IS NOT NULL GROUP BY label ORDER BY value DESC", [("Result", "label")], [("Messages", "value")]),
+        ("DKIM Validity & Alignment", "donut", f"SELECT CASE mail_dkim_result WHEN 'DKIM_VALID_AU' THEN 'valid and From-aligned' WHEN 'DKIM_VALID' THEN 'valid, not From-aligned' WHEN 'DKIM_SIGNED' THEN 'signed, not validated' ELSE 'not reported' END AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_auth_hits IS NOT NULL GROUP BY label ORDER BY value DESC", [("Result", "label")], [("Messages", "value")]),
+        ("SPF Result", "donut", f"SELECT lower(replace(coalesce(mail_spf_result,'not reported'),'SPF_','')) AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_auth_hits IS NOT NULL GROUP BY label ORDER BY value DESC", [("Result", "label")], [("Messages", "value")]),
+        ("ARC Result", "donut", f"SELECT CASE mail_arc_result WHEN 'ARC_VALID' THEN 'valid' WHEN 'ARC_INVALID' THEN 'invalid' WHEN 'ARC_SIGNED' THEN 'signed, not validated' ELSE 'not reported' END AS label, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_auth_hits IS NOT NULL GROUP BY label ORDER BY value DESC", [("Result", "label")], [("Messages", "value")]),
+        ("DMARC Policy Failures Over Time", "line", f"SELECT histogram(_timestamp, '1 hour') AS ts, count(DISTINCT mail_filter_id) AS value FROM {s} WHERE mail_dmarc_result IN ('DMARC_REJECT','DMARC_QUAR') GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Failures", "value")]),
+        ("Authentication Detail", "table", f"SELECT _timestamp AS event_time, mail_filter_id AS filter_id, mail_spam_score AS spam_score, mail_spam_threshold AS threshold, mail_spf_result AS spf, mail_dkim_result AS dkim, mail_dmarc_result AS dmarc, mail_arc_result AS arc, mail_auth_hits AS authentication_hits FROM {s} WHERE mail_auth_hits IS NOT NULL ORDER BY _timestamp DESC LIMIT 250", [("Time", "event_time"), ("PMG Filter ID", "filter_id"), ("Spam Score", "spam_score"), ("Threshold", "threshold"), ("SPF", "spf"), ("DKIM", "dkim"), ("DMARC", "dmarc"), ("ARC", "arc"), ("Authentication Tests", "authentication_hits")], []),
+    ]
     trace = [
         ("Queue-ID Correlation Timeline", "table", f"SELECT _timestamp AS event_time, mail_queue_id AS queue_id, syslog_program AS component, mail_sender AS sender, mail_recipient AS recipient, mail_relay AS relay, mail_status AS status, mail_delay AS delay, message, raw_message FROM {s} WHERE mail_queue_id IS NOT NULL ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Queue ID", "queue_id"), ("Component", "component"), ("Sender", "sender"), ("Recipient", "recipient"), ("Relay", "relay"), ("Status", "status"), ("Delay", "delay"), ("Message", "message"), ("Raw", "raw_message")], []),
         ("Raw PMG / Postfix Events", "table", f"SELECT _timestamp AS event_time, host_name AS host, source_ip, syslog_facility AS facility, syslog_severity AS severity, syslog_program AS program, message, raw_message FROM {s} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Host", "host"), ("Collector Source", "source_ip"), ("Facility", "facility"), ("Severity", "severity"), ("Program", "program"), ("Message", "message"), ("Raw", "raw_message")], []),
@@ -255,6 +264,8 @@ def pmg_dashboard() -> dict:
         build_tab("proxmox_mail_gateway", "pmg_filter_activity", "Filter Activity", filtering[4:8]),
         build_tab("proxmox_mail_gateway", "pmg_filter_detail", "Spam / Virus Detail", filtering[8:9]),
         build_tab("proxmox_mail_gateway", "pmg_delivery_detail", "Rejected / Deferred", filtering[9:]),
+        build_tab("proxmox_mail_gateway", "pmg_authentication", "Email Authentication", authentication[:6]),
+        build_tab("proxmox_mail_gateway", "pmg_auth_detail", "Authentication Detail", authentication[6:]),
         build_tab("proxmox_mail_gateway", "pmg_trace", "Queue Trace", trace[:1]),
         build_tab("proxmox_mail_gateway", "pmg_raw", "Raw Events", trace[1:]),
     ])
@@ -783,7 +794,13 @@ def bootstrap_schema(base: str, org: str, user: str, password: str, name: str) -
             "mail_delays": "0.01/0.01/0.01/0.07",
             "mail_message_size": "1024",
             "mail_spam_score": "0.0",
+            "mail_spam_threshold": "5.0",
             "mail_spam_action": "none",
+            "mail_auth_hits": "DKIM_SIGNED(0.1),DKIM_VALID_AU(-0.1),DMARC_PASS(-0.1),SPF_PASS(-0.001),ARC_SIGNED(0.001),ARC_VALID(-0.1)",
+            "mail_spf_result": "SPF_PASS",
+            "mail_dkim_result": "DKIM_VALID_AU",
+            "mail_dmarc_result": "DMARC_PASS",
+            "mail_arc_result": "ARC_VALID",
             "mail_virus_result": "clean",
             "mail_reject_reason": "none",
             "mail_direction": "inbound",

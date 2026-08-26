@@ -85,13 +85,15 @@ def validate_pmg_bootstrap() -> None:
     for field in (
         "mail_header_from", "mail_header_sender", "mail_header_sender_domain", "mail_header_to",
         "mail_envelope_sender", "mail_envelope_sender_domain", "mail_envelope_recipients",
+        "mail_spam_threshold", "mail_auth_hits", "mail_spf_result", "mail_dkim_result",
+        "mail_dmarc_result", "mail_arc_result",
     ):
         assert record[field]
 
 
 def main() -> int:
     pmg = MODULE.pmg_dashboard()
-    validate_dashboard(pmg, 34, "7d")
+    validate_dashboard(pmg, 41, "7d")
     validate_bootstrap_exclusion(pmg)
     validate_pmg_bootstrap()
     validate_dashboard(MODULE.fortigate_dashboard(), 70, "24h")
@@ -100,7 +102,7 @@ def main() -> int:
     validate_dashboard(MODULE.ubersmith_dashboard(), 24, "24h")
     validate_dashboard(MODULE.unclassified_dashboard(), 24, "24h", "source")
     validate_dashboard(MODULE.central_overview_dashboard(), 22, "24h", None)
-    print("Dashboard definitions passed (236 panels).")
+    print("Dashboard definitions passed (243 panels).")
     return 0
 
 
