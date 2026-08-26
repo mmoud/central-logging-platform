@@ -55,8 +55,45 @@ def validate_dashboard(body: dict, expected_panels: int, period: str,
             assert all(item["aggregationFunction"] is None for item in fields["y"])
 
 
+def validate_bootstrap_exclusion(body: dict) -> None:
+    for tab in body["tabs"]:
+        for panel in tab["panels"]:
+            assert "coalesce(schema_bootstrap,'false') <> 'true'" in panel["queries"][0]["query"]
+
+
+def validate_pmg_bootstrap() -> None:
+    calls: list[tuple[str, list[dict]]] = []
+    original = MODULE.api_request
+
+    def capture(_base: str, path: str, _user: str, _password: str,
+                _method: str = "GET", data: list[dict] | None = None) -> dict:
+        calls.append((path, data or []))
+        return {}
+
+    try:
+        MODULE.api_request = capture
+        MODULE.bootstrap_schema("http://127.0.0.1:5080", "default", "user", "password", "pmg")
+    finally:
+        MODULE.api_request = original
+
+    assert len(calls) == 1
+    path, records = calls[0]
+    assert path == "/api/default/proxmox_mail_gateway/_json"
+    assert len(records) == 1
+    record = records[0]
+    assert record["schema_bootstrap"] == "true"
+    for field in (
+        "mail_header_from", "mail_header_sender_domain", "mail_header_to",
+        "mail_envelope_sender", "mail_envelope_sender_domain", "mail_envelope_recipients",
+    ):
+        assert record[field]
+
+
 def main() -> int:
-    validate_dashboard(MODULE.pmg_dashboard(), 34, "7d")
+    pmg = MODULE.pmg_dashboard()
+    validate_dashboard(pmg, 34, "7d")
+    validate_bootstrap_exclusion(pmg)
+    validate_pmg_bootstrap()
     validate_dashboard(MODULE.fortigate_dashboard(), 70, "24h")
     validate_dashboard(MODULE.juniper_dashboard(), 30, "24h")
     validate_dashboard(MODULE.proxmox_ve_dashboard(), 32, "24h", "source")

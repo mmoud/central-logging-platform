@@ -53,8 +53,8 @@ pmgsh get /config/mail
 ```
 
 The resulting PMG event includes the SMTP envelope sender/recipients and the
-message's decoded `From`, `To`, and `Subject` headers. The collector stores these
-as separate `mail.envelope_*` and `mail.header_*` fields. This distinction is
+message's decoded `From`, `To`, and `Subject` headers. OpenObserve exposes these
+as separate `mail_envelope_*` and `mail_header_*` fields. This distinction is
 especially important for Microsoft 365 forwarding because Sender Rewriting
 Scheme (SRS) can rewrite the envelope sender while leaving the visible `From`
 header unchanged.
@@ -74,8 +74,16 @@ Create or update the bundled mail dashboard through OpenObserve's supported API:
 
 ```bash
 cd /opt/logging-platform
+./scripts/provision-dashboards.py --only pmg --bootstrap-schema
 ./scripts/provision-dashboards.py --only pmg
+./scripts/provision-dashboards.py --only pmg --validate-queries
 ```
+
+Run the bootstrap once when enabling PMG header logging on an existing stream.
+It adds a synthetic `example.invalid` schema record so OpenObserve can compile
+all panels before the first real header-summary event arrives. Every bundled PMG
+query explicitly excludes that record, so it never changes operational totals
+or appears in tables.
 
 The **PMG Mail Reporting** dashboard uses focused tabs for overview, volume and
 components, recent mail, senders and recipients, routing and SMTP, delivery,

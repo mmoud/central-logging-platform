@@ -99,9 +99,9 @@ def make_panel(
     dashboard_filter: bool = True,
 ) -> dict:
     # Pre-staged source schemas may contain one explicit bootstrap marker.
-    # Exclude it from every Juniper/PVE query so validation never changes the
+    # Exclude it from every affected query so validation never changes the
     # operational totals shown after real devices begin sending logs.
-    if stream in {"juniper", "proxmox_ve"}:
+    if stream in {"juniper", "proxmox_ve", "proxmox_mail_gateway"}:
         marker = "coalesce(schema_bootstrap,'false') <> 'true'"
         query = add_sql_condition(query, marker)
 
@@ -750,10 +750,47 @@ def bootstrap_schema(base: str, org: str, user: str, password: str, name: str) -
             "proxmox_ctid": "101",
             "proxmox_resource": "vm:100",
         },
+        "pmg": {
+            **common,
+            "mail_filter_id": "SCHEMA_BOOTSTRAP",
+            "mail_message_id": "schema-bootstrap@example.invalid",
+            "mail_queue_id": "SCHEMA0001",
+            "mail_linked_queue_id": "SCHEMA0002",
+            "mail_quarantine_id": "SCHEMA0003",
+            "mail_header_from": "Header Sender <header@example.invalid>",
+            "mail_header_sender_domain": "example.invalid",
+            "mail_header_to": "Header Recipient <recipient@example.invalid>",
+            "mail_envelope_sender": "envelope@example.invalid",
+            "mail_envelope_sender_domain": "example.invalid",
+            "mail_envelope_recipients": "recipient@example.invalid",
+            "mail_sender": "envelope@example.invalid",
+            "mail_sender_domain": "example.invalid",
+            "mail_recipient": "recipient@example.invalid",
+            "mail_recipient_domain": "example.invalid",
+            "mail_subject": "Schema bootstrap",
+            "mail_rule": "schema-bootstrap",
+            "mail_filter_action": "accept",
+            "mail_status": "sent",
+            "mail_relay": "schema-bootstrap.example.invalid",
+            "mail_source_ip": "192.0.2.10",
+            "mail_source_hostname": "schema-bootstrap.example.invalid",
+            "mail_destination_ip": "198.51.100.10",
+            "mail_destination_hostname": "schema-bootstrap.example.invalid",
+            "mail_smtp_response_code": "250",
+            "mail_dsn": "2.0.0",
+            "mail_delay": "0.1",
+            "mail_delays": "0.01/0.01/0.01/0.07",
+            "mail_message_size": "1024",
+            "mail_spam_score": "0.0",
+            "mail_spam_action": "none",
+            "mail_virus_result": "clean",
+            "mail_reject_reason": "none",
+            "mail_direction": "inbound",
+        },
     }
     if name not in records:
-        raise RuntimeError("schema bootstrap is only supported for juniper and proxmox-ve")
-    stream = "proxmox_ve" if name == "proxmox-ve" else name
+        raise RuntimeError("schema bootstrap is only supported for pmg, juniper, and proxmox-ve")
+    stream = {"pmg": "proxmox_mail_gateway", "proxmox-ve": "proxmox_ve"}.get(name, name)
     encoded_org = urllib.parse.quote(org, safe="")
     encoded_stream = urllib.parse.quote(stream, safe="")
     api_request(base, f"/api/{encoded_org}/{encoded_stream}/_json", user, password,
@@ -872,8 +909,8 @@ def main() -> int:
         raise RuntimeError("missing required environment settings: " + ", ".join(missing))
     base = os.environ.get("OPENOBSERVE_INTERNAL_URL", "http://127.0.0.1:5080")
     if args.bootstrap_schema:
-        if args.only not in {"juniper", "proxmox-ve"}:
-            raise RuntimeError("--bootstrap-schema requires --only juniper or --only proxmox-ve")
+        if args.only not in {"pmg", "juniper", "proxmox-ve"}:
+            raise RuntimeError("--bootstrap-schema requires --only pmg, juniper, or proxmox-ve")
         bootstrap_schema(base, os.environ["ZO_ORG"], os.environ["ZO_ROOT_USER_EMAIL"],
                          os.environ["ZO_ROOT_USER_PASSWORD"], args.only)
         return 0
