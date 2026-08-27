@@ -63,9 +63,20 @@ prepare_dirs() {
   [ "$available" -ge "$MIN_DATA_KIB" ] || die "Less than 20 GiB free at $DATA_DIR. Attach/mount the log-data disk first; no disks were changed."
 }
 
+sync_package() {
+  # Repository files are authoritative, but the real source map is private
+  # site state. Preserve it across an idempotent installer rerun and seed it
+  # from the checkout only when the target does not have one yet.
+  rsync -a --exclude '.env' --exclude 'config/sources.yml' \
+    --exclude 'logging-data/' --exclude 'backups/' "$SOURCE_DIR/" "$PLATFORM_DIR/"
+  if [ ! -f "$PLATFORM_DIR/config/sources.yml" ]; then
+    install -m 0640 "$SOURCE_DIR/config/sources.yml" "$PLATFORM_DIR/config/sources.yml"
+  fi
+}
+
 copy_package() {
-  # Do not delete an administrator's local files and never overwrite a live .env.
-  rsync -a --exclude '.env' --exclude 'logging-data/' --exclude 'backups/' "$SOURCE_DIR/" "$PLATFORM_DIR/"
+  # Do not delete administrator files or overwrite live secrets/source maps.
+  sync_package
   chown -R root:root "$PLATFORM_DIR"
   find "$PLATFORM_DIR" -type d -exec chmod 0750 {} +
   find "$PLATFORM_DIR" -type f -exec chmod 0640 {} +
@@ -155,4 +166,6 @@ EOF
     printf '\nGenerated password (shown once; saved in %s/.env): %s\n' "$PLATFORM_DIR" "$INITIAL_PASSWORD"
   fi
 }
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

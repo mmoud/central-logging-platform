@@ -74,7 +74,9 @@ The parsers deliberately remain conservative. Every FortiGate key/value field is
 sudo ./scripts/update.sh --check
 ```
 
-`validate.sh` checks source mappings, TLS assets, environment permissions/data paths, Compose syntax and syslog-ng syntax before restart. `test-buffering.sh` stops only this project's OpenObserve service, injects logs, checks a persistent queue file, restores OpenObserve, and waits for health; it never deletes stored logs. Backup captures configuration and local metadata when available, **not** raw stream data/WAL or queued messages. Restore stops this project, asks for literal confirmation, overlays the archive, validates, and restarts.
+`validate.sh` checks source mappings, TLS assets, environment permissions/data paths, Compose syntax, syslog-ng syntax, and redeployment safeguards before restart. `test-buffering.sh` stops only this project's OpenObserve service, injects logs, checks a persistent queue file, restores OpenObserve, and waits for health; it never deletes stored logs. Backup briefly stops only OpenObserve for a consistent SQLite metadata copy while syslog-ng queues incoming events. Its protected archive contains `.env`, the real source mapping, TLS material and local metadata—not raw stream data/WAL or queued messages. Git remains authoritative for Compose, parsers, scripts and dashboards.
+
+For a replacement server, prepare the host networking and mounted data disk, clone the repository, run `sudo ./install.sh`, copy the protected backup onto the server, and run `sudo ./scripts/restore.sh /path/to/backup.tar.gz`. Restore creates a pre-restore safety archive, places metadata under `${DATA_DIR}/openobserve/db`, validates before startup, then reapplies the current Git dashboard, saved-view, stream-search and cached-report definitions. It does not restore raw logs. Keep backups encrypted/off-host because they contain administrator credentials, real device mappings and possibly TLS private keys.
 
 `tests/test-vendor-parsers.sh` runs the Juniper and Proxmox sample corpus through
 the pinned syslog-ng image and asserts the important extracted fields. Set

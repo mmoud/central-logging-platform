@@ -1,7 +1,8 @@
 # Bundled dashboards
 
 `scripts/provision-dashboards.py` contains the version-controlled definitions
-for the fleet overview, PMG, FortiGate, Juniper, Proxmox VE, Ubersmith, and unclassified-source dashboards and creates or updates them through
+for the fleet overview, PMG, FortiGate, Juniper, Proxmox VE, Ubersmith, and
+unclassified-source dashboards and creates or updates them through
 OpenObserve's supported dashboard API.
 
 Run `sudo ./scripts/provision-dashboards.py` from the installed platform
@@ -18,10 +19,10 @@ events into one synthetic message.
 
 The separate 22-panel **Central Logging Overview** shows event counts, latest
 event timestamps, hourly volume, and a small set of triage indicators without
-combining vendor schemas. Each detailed dashboard has a query-backed device
-selector; the unclassified dashboard selects source IP instead. PMG opens at
-seven days by default, while the overview and other operational dashboards open
-at 24 hours. Users can still choose any time range in the GUI.
+combining vendor schemas. Each detailed reporting dashboard has a query-backed
+device selector; the unclassified dashboard selects source IP instead. All
+dashboards open at six hours for responsive initial loading, and users can
+still choose any time range in the GUI.
 
 Dashboard folders are created through the supported folders API: Logging
 Overview, Messaging, Network & Security, Infrastructure, Applications, and
@@ -32,6 +33,14 @@ The FortiGate definition includes 70 panels covering traffic, VDOMs, VPN,
 administration, HA, routing, application control, IPS, web/DNS filtering,
 antivirus/file filtering, DLP, email filtering, SSL, WAF, CASB, anomalies and
 virtual-patch events. FortiOS fields not used by a panel remain searchable.
+The separate 14-panel **FortiGate Event Investigation** traces connections,
+sessions, NAT, policies and UTM evidence. The 34-panel **FortiGate Access & VPN
+Operations** dashboard focuses on authentication, IPsec, SSL-VPN,
+administrative, HA and update activity.
+
+PMG reporting is split into the 40-panel **PMG Mail Reporting** dashboard and
+the focused 9-panel **PMG Message Investigation** workflow. A separate
+15-panel PMG-to-Ubersmith view correlates only factual mail handoff evidence.
 
 **Juniper Router Operations** is a separate 30-panel dashboard for Junos
 interfaces, routing protocols/peers, authentication, configuration changes,
