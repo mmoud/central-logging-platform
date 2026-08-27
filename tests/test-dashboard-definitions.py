@@ -194,12 +194,18 @@ def main() -> int:
     validate_ubersmith_bootstrap()
     fortigate = MODULE.fortigate_dashboard()
     fortigate_investigation = MODULE.fortigate_investigation_dashboard()
+    fortigate_access_vpn = MODULE.fortigate_access_vpn_dashboard()
     juniper = MODULE.juniper_dashboard()
     proxmox_ve = MODULE.proxmox_ve_dashboard()
     validate_dashboard(fortigate, 70, "6h")
     validate_dashboard(
         fortigate_investigation, 14, "6h", extra_variables=(
             "src_ip", "dst_ip", "fg_user", "session_id", "policy", "vdom", "search_text",
+        ),
+    )
+    validate_dashboard(
+        fortigate_access_vpn, 34, "6h", extra_variables=(
+            "access_src_ip", "access_user", "access_vdom", "vpn_peer", "ops_text",
         ),
     )
     validate_dashboard(juniper, 30, "6h")
@@ -217,10 +223,10 @@ def main() -> int:
     validate_dashboard(overview, 22, "6h", None)
     validate_visualization_choices([
         pmg["pmg-reporting"], pmg["pmg-investigation"], fortigate,
-        fortigate_investigation, juniper, proxmox_ve,
+        fortigate_investigation, fortigate_access_vpn, juniper, proxmox_ve,
         ubersmith, ubersmith_mail, unclassified, overview,
     ])
-    print("Dashboard definitions passed (280 panels).")
+    print("Dashboard definitions passed (314 panels).")
     return 0
 
 

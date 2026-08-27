@@ -5,13 +5,13 @@ HTTP APIs. It does not modify the internal SQLite database.
 
 ## Dashboards and folders
 
-`scripts/provision-dashboards.py` owns ten dashboards and their folders:
+`scripts/provision-dashboards.py` owns eleven dashboards and their folders:
 
 | Folder | Dashboards |
 |---|---|
 | Logging Overview | Central Logging Overview |
 | Messaging | PMG Mail Reporting; PMG Message Investigation; PMG to Ubersmith Mail Handoff |
-| Network & Security | FortiGate Security & Traffic; FortiGate Event Investigation; Juniper Router Operations |
+| Network & Security | FortiGate Security & Traffic; FortiGate Event Investigation; FortiGate Access & VPN Operations; Juniper Router Operations |
 | Infrastructure | Proxmox VE Operations |
 | Applications | Ubersmith Billing Operations |
 | Source Discovery | Unclassified Source Discovery |
@@ -30,6 +30,13 @@ filters for source/translated IP, destination/translated IP, user, session ID,
 policy ID/name, VDOM, and application/host/URL/threat/free text. Its tabs trace
 matching events, session and NAT evidence, policy decisions, UTM/security
 evidence, administrative/VPN/HA/routing activity, and the preserved raw event.
+
+FortiGate Access & VPN Operations is a separate day-to-day operational view. It
+shows authentication success/failure trends, source IPs and countries,
+attempted usernames, authentication protocols, IPsec and SSL-VPN outcomes,
+peer and failure-reason evidence, plus related administrative, HA and update
+events. Device, source IP, user, VDOM, VPN peer and free-text filters apply
+across the dashboard; its evidence tables retain the original raw message.
 
 ## Visualization conventions
 

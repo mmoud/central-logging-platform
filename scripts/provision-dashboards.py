@@ -20,6 +20,7 @@ DASHBOARD_FOLDERS = {
     "pmg-investigation": ("Messaging", "Sender, recipient, filtering and queue investigation."),
     "fortigate": ("Network & Security", "Firewall, router and network security reporting."),
     "fortigate-investigation": ("Network & Security", "FortiGate connection and event investigation."),
+    "fortigate-access-vpn": ("Network & Security", "FortiGate access, authentication and VPN operations."),
     "juniper": ("Network & Security", "Firewall, router and network security reporting."),
     "proxmox-ve": ("Infrastructure", "Virtualization and host operations."),
     "ubersmith": ("Applications", "Application and business-system operations."),
@@ -556,6 +557,107 @@ def fortigate_investigation_dashboard() -> dict:
             textbox("policy", "Policy ID or name"),
             textbox("vdom", "VDOM"),
             textbox("search_text", "Application, host, URL, threat or text"),
+        ],
+    )
+
+
+def fortigate_access_vpn_dashboard() -> dict:
+    """Authentication, administrative access, IPsec and SSL-VPN operations."""
+    s = '"fortigate"'
+    filters = " AND ".join([
+        "('{{access_src_ip}}' = '_o2_all_' OR coalesce(fortigate_srcip,'') = '{{access_src_ip}}')",
+        "('{{access_user}}' = '_o2_all_' OR lower(coalesce(fortigate_user,'')) = lower('{{access_user}}') OR lower(coalesce(message,'')) LIKE concat('%', lower('{{access_user}}'), '%'))",
+        "('{{access_vdom}}' = '_o2_all_' OR lower(coalesce(fortigate_vd,'')) = lower('{{access_vdom}}'))",
+        "('{{vpn_peer}}' = '_o2_all_' OR coalesce(fortigate_srcip,'') = '{{vpn_peer}}' OR coalesce(fortigate_dstip,'') = '{{vpn_peer}}' OR lower(coalesce(message,'')) LIKE concat('%', lower('{{vpn_peer}}'), '%'))",
+        "('{{ops_text}}' = '_o2_all_' OR lower(coalesce(fortigate_eventtype,'')) LIKE concat('%', lower('{{ops_text}}'), '%') OR lower(coalesce(fortigate_logdesc,'')) LIKE concat('%', lower('{{ops_text}}'), '%') OR lower(coalesce(fortigate_reason,'')) LIKE concat('%', lower('{{ops_text}}'), '%') OR lower(coalesce(fortigate_msg,'')) LIKE concat('%', lower('{{ops_text}}'), '%') OR lower(coalesce(message,'')) LIKE concat('%', lower('{{ops_text}}'), '%') OR lower(coalesce(raw_message,'')) LIKE concat('%', lower('{{ops_text}}'), '%'))",
+    ])
+    auth_scope = "(lower(coalesce(fortigate_subtype,'')) IN ('user','admin') OR fortigate_authproto IS NOT NULL OR lower(coalesce(fortigate_eventtype,'')) LIKE '%auth%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%auth%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%login%')"
+    auth_failure = "(lower(coalesce(fortigate_status,'')) IN ('fail','failed','failure','error','deny','denied') OR lower(coalesce(fortigate_action,'')) IN ('fail','failed','failure','deny','denied','blocked','reject') OR lower(coalesce(fortigate_logdesc,'')) LIKE '%fail%' OR lower(coalesce(fortigate_msg,'')) LIKE '%fail%')"
+    auth_success = "(lower(coalesce(fortigate_status,'')) IN ('success','succeeded','ok','accept','accepted') OR lower(coalesce(fortigate_action,'')) IN ('success','succeeded','login','accept','accepted') OR lower(coalesce(fortigate_logdesc,'')) LIKE '%success%')"
+    vpn_scope = "(lower(coalesce(fortigate_subtype,'')) LIKE '%vpn%' OR lower(coalesce(fortigate_eventtype,'')) LIKE '%vpn%' OR lower(coalesce(fortigate_eventtype,'')) LIKE '%ipsec%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%vpn%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%ipsec%' OR lower(coalesce(message,'')) LIKE '%ssl vpn%' OR lower(coalesce(message,'')) LIKE '%sslvpn%' OR lower(coalesce(message,'')) LIKE '%ipsec%')"
+    vpn_failure = "(lower(coalesce(fortigate_status,'')) IN ('fail','failed','failure','error','down','negotiate_error') OR lower(coalesce(fortigate_action,'')) IN ('fail','failed','failure','error','deny','denied','down') OR lower(coalesce(fortigate_logdesc,'')) LIKE '%fail%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%error%' OR lower(coalesce(fortigate_reason,'')) LIKE '%fail%' OR lower(coalesce(fortigate_msg,'')) LIKE '%fail%' OR lower(coalesce(fortigate_msg,'')) LIKE '%error%')"
+    vpn_success = "(lower(coalesce(fortigate_status,'')) IN ('success','succeeded','ok','up','connected','established') OR lower(coalesce(fortigate_action,'')) IN ('success','succeeded','up','connect','connected','tunnel-up') OR lower(coalesce(fortigate_logdesc,'')) LIKE '%success%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%tunnel up%')"
+    ipsec_scope = f"({vpn_scope} AND (lower(coalesce(fortigate_eventtype,'')) LIKE '%ipsec%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%ipsec%' OR lower(coalesce(message,'')) LIKE '%ipsec%' OR lower(coalesce(message,'')) LIKE '%phase 1%' OR lower(coalesce(message,'')) LIKE '%phase 2%'))"
+    ssl_scope = f"({vpn_scope} AND (lower(coalesce(fortigate_eventtype,'')) LIKE '%ssl%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%ssl%' OR lower(coalesce(message,'')) LIKE '%ssl vpn%' OR lower(coalesce(message,'')) LIKE '%sslvpn%'))"
+
+    access_summary = [
+        ("Authentication Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE {auth_scope} AND {filters}", [], [("Events", "value")]),
+        ("Authentication Failures", "metric", f"SELECT count(*) AS value FROM {s} WHERE {auth_scope} AND {auth_failure} AND {filters}", [], [("Failures", "value")]),
+        ("Authentication Successes", "metric", f"SELECT count(*) AS value FROM {s} WHERE {auth_scope} AND {auth_success} AND {filters}", [], [("Successes", "value")]),
+        ("Unique Authentication Sources", "metric", f"SELECT count(DISTINCT fortigate_srcip) AS value FROM {s} WHERE {auth_scope} AND fortigate_srcip IS NOT NULL AND {filters}", [], [("Sources", "value")]),
+        ("Authentication Outcomes Over Time", "line", f"SELECT histogram(_timestamp, '15 minute') AS ts, sum(CASE WHEN {auth_failure} THEN 1 ELSE 0 END) AS failures, sum(CASE WHEN {auth_success} THEN 1 ELSE 0 END) AS successes FROM {s} WHERE {auth_scope} AND {filters} GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Failures", "failures"), ("Successes", "successes")]),
+        ("Authentication Outcomes", "donut", f"SELECT coalesce(fortigate_status,fortigate_action,'unknown') AS label, count(*) AS value FROM {s} WHERE {auth_scope} AND {filters} GROUP BY label ORDER BY value DESC LIMIT 12", [("Outcome", "label")], [("Events", "value")]),
+    ]
+    access_sources = [
+        ("Top Authentication Failure Sources", "h-bar", f"SELECT fortigate_srcip AS label, count(*) AS value FROM {s} WHERE {auth_scope} AND {auth_failure} AND fortigate_srcip IS NOT NULL AND {filters} GROUP BY label ORDER BY value DESC LIMIT 20", [("Source IP", "label")], [("Failures", "value")]),
+        ("Authentication Source Countries", "h-bar", f"SELECT fortigate_srccountry AS label, count(*) AS value FROM {s} WHERE {auth_scope} AND fortigate_srccountry IS NOT NULL AND {filters} GROUP BY label ORDER BY value DESC LIMIT 20", [("Country", "label")], [("Events", "value")]),
+        ("Attempted Usernames", "table", f"SELECT coalesce(fortigate_user,'unknown') AS user_name, count(*) AS events, sum(CASE WHEN {auth_failure} THEN 1 ELSE 0 END) AS failures, max(_timestamp) AS last_seen FROM {s} WHERE {auth_scope} AND {filters} GROUP BY fortigate_user ORDER BY failures DESC LIMIT 250", [("User", "user_name"), ("Events", "events"), ("Failures", "failures"), ("Last Seen", "last_seen")], []),
+        ("Authentication Protocols", "table", f"SELECT coalesce(fortigate_authproto,'unknown') AS protocol, coalesce(fortigate_status,fortigate_action,'unknown') AS outcome, count(*) AS events, max(_timestamp) AS last_seen FROM {s} WHERE {auth_scope} AND {filters} GROUP BY fortigate_authproto, fortigate_status, fortigate_action ORDER BY events DESC LIMIT 250", [("Protocol", "protocol"), ("Outcome", "outcome"), ("Events", "events"), ("Last Seen", "last_seen")], []),
+        ("Authentication Targets", "table", f"SELECT coalesce(fortigate_dstip,'device') AS target_ip, coalesce(fortigate_vd,'unknown') AS vdom, coalesce(fortigate_authproto,'unknown') AS protocol, count(*) AS events, max(_timestamp) AS last_seen FROM {s} WHERE {auth_scope} AND {filters} GROUP BY fortigate_dstip, fortigate_vd, fortigate_authproto ORDER BY events DESC LIMIT 250", [("Target IP", "target_ip"), ("VDOM", "vdom"), ("Protocol", "protocol"), ("Events", "events"), ("Last Seen", "last_seen")], []),
+    ]
+    access_detail = [
+        ("Authentication Failure Evidence", "table", f"SELECT _timestamp AS event_time, device_name, fortigate_vd AS vdom, fortigate_srcip AS source_ip, fortigate_srccountry AS source_country, fortigate_dstip AS target_ip, fortigate_user AS user_name, fortigate_authproto AS protocol, fortigate_status AS status, fortigate_action AS action, fortigate_reason AS reason, fortigate_logdesc AS description, fortigate_msg AS detail, raw_message FROM {s} WHERE {auth_scope} AND {auth_failure} AND {filters} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Device", "device_name"), ("VDOM", "vdom"), ("Source IP", "source_ip"), ("Country", "source_country"), ("Target IP", "target_ip"), ("User", "user_name"), ("Protocol", "protocol"), ("Status", "status"), ("Action", "action"), ("Reason", "reason"), ("Description", "description"), ("Detail", "detail"), ("Raw", "raw_message")], []),
+        ("Successful Administrative Access", "table", f"SELECT _timestamp AS event_time, device_name, fortigate_vd AS vdom, fortigate_srcip AS source_ip, fortigate_user AS user_name, fortigate_authproto AS protocol, fortigate_status AS status, fortigate_action AS action, fortigate_logdesc AS description, fortigate_msg AS detail, raw_message FROM {s} WHERE {auth_scope} AND {auth_success} AND {filters} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Device", "device_name"), ("VDOM", "vdom"), ("Source IP", "source_ip"), ("User", "user_name"), ("Protocol", "protocol"), ("Status", "status"), ("Action", "action"), ("Description", "description"), ("Detail", "detail"), ("Raw", "raw_message")], []),
+        ("Authentication Failure Reasons", "table", f"SELECT coalesce(fortigate_reason,fortigate_msg,fortigate_logdesc,'unknown') AS reason, count(*) AS events, max(_timestamp) AS last_seen FROM {s} WHERE {auth_scope} AND {auth_failure} AND {filters} GROUP BY fortigate_reason, fortigate_msg, fortigate_logdesc ORDER BY events DESC LIMIT 250", [("Reason", "reason"), ("Events", "events"), ("Last Seen", "last_seen")], []),
+    ]
+    vpn_summary = [
+        ("VPN Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE {vpn_scope} AND {filters}", [], [("Events", "value")]),
+        ("VPN Failures / Errors", "metric", f"SELECT count(*) AS value FROM {s} WHERE {vpn_scope} AND {vpn_failure} AND {filters}", [], [("Failures", "value")]),
+        ("VPN Success / Up", "metric", f"SELECT count(*) AS value FROM {s} WHERE {vpn_scope} AND {vpn_success} AND {filters}", [], [("Successes", "value")]),
+        ("Unique VPN Peers", "metric", f"SELECT count(DISTINCT coalesce(fortigate_dstip,fortigate_srcip)) AS value FROM {s} WHERE {vpn_scope} AND (fortigate_dstip IS NOT NULL OR fortigate_srcip IS NOT NULL) AND {filters}", [], [("Peers", "value")]),
+        ("VPN Outcomes Over Time", "line", f"SELECT histogram(_timestamp, '15 minute') AS ts, sum(CASE WHEN {vpn_failure} THEN 1 ELSE 0 END) AS failures, sum(CASE WHEN {vpn_success} THEN 1 ELSE 0 END) AS successes FROM {s} WHERE {vpn_scope} AND {filters} GROUP BY ts ORDER BY ts", [("Time", "ts")], [("Failures", "failures"), ("Successes", "successes")]),
+        ("VPN Event Types", "table", f"SELECT coalesce(fortigate_eventtype,fortigate_logdesc,'unknown') AS event_type, coalesce(fortigate_status,fortigate_action,'unknown') AS outcome, count(*) AS events, max(_timestamp) AS last_seen FROM {s} WHERE {vpn_scope} AND {filters} GROUP BY fortigate_eventtype, fortigate_logdesc, fortigate_status, fortigate_action ORDER BY events DESC LIMIT 250", [("Event", "event_type"), ("Outcome", "outcome"), ("Events", "events"), ("Last Seen", "last_seen")], []),
+    ]
+    ipsec = [
+        ("IPsec Phase and Event Summary", "table", f"SELECT coalesce(fortigate_logdesc,fortigate_eventtype,'unknown') AS event, coalesce(fortigate_status,fortigate_action,'unknown') AS outcome, count(*) AS events, max(_timestamp) AS last_seen FROM {s} WHERE {ipsec_scope} AND {filters} GROUP BY fortigate_logdesc, fortigate_eventtype, fortigate_status, fortigate_action ORDER BY events DESC LIMIT 250", [("Event", "event"), ("Outcome", "outcome"), ("Events", "events"), ("Last Seen", "last_seen")], []),
+        ("Top IPsec Peers", "h-bar", f"SELECT coalesce(fortigate_dstip,fortigate_srcip,'unknown') AS label, count(*) AS value FROM {s} WHERE {ipsec_scope} AND {filters} GROUP BY label ORDER BY value DESC LIMIT 20", [("Peer", "label")], [("Events", "value")]),
+        ("IPsec Failure Reasons", "table", f"SELECT coalesce(fortigate_reason,fortigate_msg,fortigate_logdesc,'unknown') AS reason, count(*) AS events, max(_timestamp) AS last_seen FROM {s} WHERE {ipsec_scope} AND {vpn_failure} AND {filters} GROUP BY fortigate_reason, fortigate_msg, fortigate_logdesc ORDER BY events DESC LIMIT 250", [("Reason", "reason"), ("Events", "events"), ("Last Seen", "last_seen")], []),
+        ("Recent IPsec Evidence", "table", f"SELECT _timestamp AS event_time, device_name, fortigate_vd AS vdom, fortigate_srcip AS source_ip, fortigate_dstip AS peer_ip, fortigate_user AS user_name, fortigate_eventtype AS event_type, fortigate_status AS status, fortigate_action AS action, fortigate_reason AS reason, fortigate_logdesc AS description, fortigate_msg AS detail, raw_message FROM {s} WHERE {ipsec_scope} AND {filters} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Device", "device_name"), ("VDOM", "vdom"), ("Source IP", "source_ip"), ("Peer IP", "peer_ip"), ("User", "user_name"), ("Event", "event_type"), ("Status", "status"), ("Action", "action"), ("Reason", "reason"), ("Description", "description"), ("Detail", "detail"), ("Raw", "raw_message")], []),
+    ]
+    ssl_vpn = [
+        ("SSL-VPN Outcomes", "donut", f"SELECT coalesce(fortigate_status,fortigate_action,'unknown') AS label, count(*) AS value FROM {s} WHERE {ssl_scope} AND {filters} GROUP BY label ORDER BY value DESC LIMIT 12", [("Outcome", "label")], [("Events", "value")]),
+        ("SSL-VPN Users", "table", f"SELECT coalesce(fortigate_user,'unknown') AS user_name, count(*) AS events, sum(CASE WHEN {vpn_failure} THEN 1 ELSE 0 END) AS failures, max(_timestamp) AS last_seen FROM {s} WHERE {ssl_scope} AND {filters} GROUP BY fortigate_user ORDER BY events DESC LIMIT 250", [("User", "user_name"), ("Events", "events"), ("Failures", "failures"), ("Last Seen", "last_seen")], []),
+        ("SSL-VPN Source Addresses", "table", f"SELECT coalesce(fortigate_srcip,'unknown') AS source_ip, coalesce(fortigate_srccountry,'unknown') AS country, count(*) AS events, sum(CASE WHEN {vpn_failure} THEN 1 ELSE 0 END) AS failures, max(_timestamp) AS last_seen FROM {s} WHERE {ssl_scope} AND {filters} GROUP BY fortigate_srcip, fortigate_srccountry ORDER BY events DESC LIMIT 250", [("Source IP", "source_ip"), ("Country", "country"), ("Events", "events"), ("Failures", "failures"), ("Last Seen", "last_seen")], []),
+        ("Recent SSL-VPN Evidence", "table", f"SELECT _timestamp AS event_time, device_name, fortigate_vd AS vdom, fortigate_srcip AS source_ip, fortigate_srccountry AS country, fortigate_user AS user_name, fortigate_eventtype AS event_type, fortigate_status AS status, fortigate_action AS action, fortigate_reason AS reason, fortigate_logdesc AS description, fortigate_msg AS detail, raw_message FROM {s} WHERE {ssl_scope} AND {filters} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Device", "device_name"), ("VDOM", "vdom"), ("Source IP", "source_ip"), ("Country", "country"), ("User", "user_name"), ("Event", "event_type"), ("Status", "status"), ("Action", "action"), ("Reason", "reason"), ("Description", "description"), ("Detail", "detail"), ("Raw", "raw_message")], []),
+    ]
+    system = [
+        ("HA Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE (lower(coalesce(fortigate_subtype,'')) = 'ha' OR lower(coalesce(fortigate_eventtype,'')) LIKE '%ha%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%ha %' OR lower(coalesce(message,'')) LIKE '%failover%') AND {filters}", [], [("Events", "value")]),
+        ("Administrative / Configuration Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE (lower(coalesce(fortigate_subtype,'')) = 'admin' OR lower(coalesce(fortigate_eventtype,'')) LIKE '%config%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%config%' OR lower(coalesce(message,'')) LIKE '%configuration%') AND {filters}", [], [("Events", "value")]),
+        ("Update Events", "metric", f"SELECT count(*) AS value FROM {s} WHERE (lower(coalesce(fortigate_eventtype,'')) LIKE '%update%' OR lower(coalesce(fortigate_logdesc,'')) LIKE '%update%' OR lower(coalesce(message,'')) LIKE '%update%') AND {filters}", [], [("Events", "value")]),
+        ("HA Status and Events", "table", f"SELECT coalesce(fortigate_logdesc,fortigate_eventtype,'unknown') AS event, coalesce(fortigate_status,fortigate_action,'unknown') AS status, count(*) AS events, max(_timestamp) AS last_seen FROM {s} WHERE (lower(coalesce(fortigate_subtype,'')) = 'ha' OR lower(coalesce(fortigate_eventtype,'')) LIKE '%ha%' OR lower(coalesce(message,'')) LIKE '%failover%') AND {filters} GROUP BY fortigate_logdesc, fortigate_eventtype, fortigate_status, fortigate_action ORDER BY events DESC LIMIT 250", [("Event", "event"), ("Status", "status"), ("Events", "events"), ("Last Seen", "last_seen")], []),
+        ("Administrative, HA and Update Evidence", "table", f"SELECT _timestamp AS event_time, device_name, fortigate_vd AS vdom, fortigate_subtype AS subtype, fortigate_eventtype AS event_type, fortigate_level AS severity, fortigate_user AS user_name, fortigate_srcip AS source_ip, fortigate_status AS status, fortigate_action AS action, fortigate_reason AS reason, fortigate_logdesc AS description, fortigate_msg AS detail, raw_message FROM {s} WHERE (lower(coalesce(fortigate_subtype,'')) IN ('admin','ha','system') OR lower(coalesce(fortigate_eventtype,'')) LIKE '%config%' OR lower(coalesce(fortigate_eventtype,'')) LIKE '%update%' OR lower(coalesce(message,'')) LIKE '%failover%') AND {filters} ORDER BY _timestamp DESC LIMIT 500", [("Time", "event_time"), ("Device", "device_name"), ("VDOM", "vdom"), ("Subtype", "subtype"), ("Event", "event_type"), ("Severity", "severity"), ("User", "user_name"), ("Source IP", "source_ip"), ("Status", "status"), ("Action", "action"), ("Reason", "reason"), ("Description", "description"), ("Detail", "detail"), ("Raw", "raw_message")], []),
+    ]
+    raw = [
+        ("Raw Access and VPN Evidence", "table", f"SELECT _timestamp AS event_time, received_at, device_name, source_ip AS collector_source_ip, fortigate_devname AS fortigate_device, fortigate_devid AS serial, fortigate_vd AS vdom, fortigate_type AS log_type, fortigate_subtype AS subtype, fortigate_eventtype AS event_type, fortigate_user AS user_name, fortigate_srcip AS source_ip, fortigate_dstip AS destination_ip, fortigate_status AS status, fortigate_action AS action, message, raw_message FROM {s} WHERE ({auth_scope} OR {vpn_scope}) AND {filters} ORDER BY _timestamp DESC LIMIT 1000", [("Time", "event_time"), ("Received", "received_at"), ("Mapped Device", "device_name"), ("Collector Source", "collector_source_ip"), ("FortiGate", "fortigate_device"), ("Serial", "serial"), ("VDOM", "vdom"), ("Type", "log_type"), ("Subtype", "subtype"), ("Event", "event_type"), ("User", "user_name"), ("Source IP", "source_ip"), ("Destination IP", "destination_ip"), ("Status", "status"), ("Action", "action"), ("Message", "message"), ("Raw", "raw_message")], []),
+    ]
+
+    def textbox(name: str, label: str) -> dict:
+        return {
+            "type": "textbox", "name": name, "label": label, "value": "_o2_all_",
+            "options": [], "multiSelect": False, "hideOnDashboard": False,
+            "selectAllValueForMultiSelect": "first", "escapeSingleQuotes": True,
+        }
+
+    return dashboard(
+        "FortiGate Access & VPN Operations",
+        "Operational authentication, administrative access, IPsec, SSL-VPN, HA and system-change evidence.",
+        [
+            build_tab("fortigate", "fg_access_summary", "Access Summary", access_summary),
+            build_tab("fortigate", "fg_access_sources", "Access Sources & Users", access_sources),
+            build_tab("fortigate", "fg_access_detail", "Authentication Evidence", access_detail),
+            build_tab("fortigate", "fg_vpn_summary", "VPN Summary", vpn_summary),
+            build_tab("fortigate", "fg_ipsec", "IPsec Operations", ipsec),
+            build_tab("fortigate", "fg_ssl_vpn", "SSL-VPN Operations", ssl_vpn),
+            build_tab("fortigate", "fg_access_system", "Admin, HA & Updates", system),
+            build_tab("fortigate", "fg_access_raw", "Raw Evidence", raw),
+        ],
+        relative_period="6h",
+        extra_variables=[
+            textbox("access_src_ip", "Source IP"),
+            textbox("access_user", "User"),
+            textbox("access_vdom", "VDOM"),
+            textbox("vpn_peer", "VPN peer IP or text"),
+            textbox("ops_text", "Event, reason or free text"),
         ],
     )
 
@@ -1202,7 +1304,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--export-dir", type=Path)
-    parser.add_argument("--only", choices=("pmg", "pmg-reporting", "pmg-investigation", "fortigate", "fortigate-investigation", "juniper", "proxmox-ve", "ubersmith", "ubersmith-mail", "unclassified", "overview"))
+    parser.add_argument("--only", choices=("pmg", "pmg-reporting", "pmg-investigation", "fortigate", "fortigate-investigation", "fortigate-access-vpn", "juniper", "proxmox-ve", "ubersmith", "ubersmith-mail", "unclassified", "overview"))
     parser.add_argument("--bootstrap-schema", action="store_true",
                         help="create the selected future stream schema with one excluded marker")
     parser.add_argument("--validate-queries", action="store_true",
@@ -1212,6 +1314,7 @@ def main() -> int:
         **pmg_dashboards(),
         "fortigate": fortigate_dashboard(),
         "fortigate-investigation": fortigate_investigation_dashboard(),
+        "fortigate-access-vpn": fortigate_access_vpn_dashboard(),
         "juniper": juniper_dashboard(),
         "proxmox-ve": proxmox_ve_dashboard(),
         "ubersmith": ubersmith_dashboard(),
